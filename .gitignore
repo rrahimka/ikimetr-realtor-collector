@@ -20,3 +20,4 @@ playwright-profiles/
 *.sqlite3
 *.log
 *.csv
+*.tsbuildinfo
