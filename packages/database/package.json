@@ -1,0 +1,22 @@
+{
+  "name": "@ikimetr/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "db:migrate": "tsx src/migrate.ts",
+    "test": "vitest run --root ../.. packages/database/src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ikimetr/core": "workspace:*",
+    "better-sqlite3": "^12.4.1",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "tsx": "^4.20.5",
+    "vitest": "^4.1.10"
+  }
+}
