@@ -1,0 +1,6 @@
+{
+  "name": "@ikimetr/worker", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": { "dev": "tsx watch src/index.ts", "start": "tsx src/index.ts", "test": "vitest run --root ../.. apps/worker/src", "typecheck": "tsc --noEmit", "build": "tsc --noEmit" },
+  "dependencies": { "@ikimetr/core": "workspace:*", "@ikimetr/database": "workspace:*", "@ikimetr/connectors": "workspace:*" },
+  "devDependencies": { "tsx": "^4.20.5", "vitest": "^4.1.10" }
+}
