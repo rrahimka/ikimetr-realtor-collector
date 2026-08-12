@@ -3,7 +3,7 @@ import type { AddressResolver } from '@ikimetr/core';
 import { assertSafeUrl, extractPhones } from '@ikimetr/core';
 import { load } from 'cheerio';
 import { ElementType } from 'domelementtype';
-import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types.js';
+import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types';
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
 export interface FetchDependencies { fetcher?: Fetcher; resolver?: AddressResolver; maxBytes?: number; timeoutMs?: number }

@@ -1,8 +1,8 @@
 import { cookies, headers } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { apiRateLimit } from './rate-limit.js';
-import { verifySessionToken } from './auth.js';
-import { verifyCsrf } from './csrf.js';
+import { apiRateLimit } from './rate-limit';
+import { verifySessionToken } from './auth';
+import { verifyCsrf } from './csrf';
 
 export async function requireApi(mutate = false) {
   const h = await headers();

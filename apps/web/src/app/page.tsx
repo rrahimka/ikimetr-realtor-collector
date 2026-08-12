@@ -1,2 +1,2 @@
-import { getRepositories } from '../lib/db.js';
+import { getRepositories } from '../lib/db';
 export const dynamic='force-dynamic';export default function Dashboard(){const s=getRepositories().dashboard.stats();const cards=[['Источники',s.sources],['Запуски',s.runs],['Уникальные номера',s.contacts],['Новые записи',s.newContacts],['Ошибки',s.errors],['Активные задания',s.active]];return <><p className="eyebrow">Overview</p><h1>Dashboard</h1><section className="cards">{cards.map(([label,value])=><article className="card" key={label}><span className="muted">{label}</span><strong>{value}</strong></article>)}</section></>}

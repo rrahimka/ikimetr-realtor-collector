@@ -1,2 +1,2 @@
-import { NextResponse } from 'next/server';import { getRepositories } from '../../../../../lib/db.js';import { requireApi,apiError } from '../../../../../lib/http.js';
+import { NextResponse } from 'next/server';import { getRepositories } from '../../../../../lib/db';import { requireApi,apiError } from '../../../../../lib/http';
 export async function POST(_request:Request,{params}:{params:Promise<{id:string}>}){try{await requireApi(true);const{id}=await params;getRepositories().runs.requestCancellation(Number(id));return NextResponse.json({ok:true});}catch(e){return apiError(e);}}

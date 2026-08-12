@@ -1,5 +1,5 @@
 import type { Classification, EvidenceInput, SourceInput } from '@ikimetr/core';
-import type { CollectorDatabase } from './client.js';
+import type { CollectorDatabase } from './client';
 
 const now = () => new Date().toISOString();
 type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';

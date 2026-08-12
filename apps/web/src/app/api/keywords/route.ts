@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';import { z } from 'zod';import { getRepositories } from '../../../lib/db.js';import { requireApi,apiError } from '../../../lib/http.js';
+import { NextResponse } from 'next/server';import { z } from 'zod';import { getRepositories } from '../../../lib/db';import { requireApi,apiError } from '../../../lib/http';
 export async function GET(){try{await requireApi();return NextResponse.json(getRepositories().keywords.list());}catch(e){return apiError(e);}}
 export async function POST(request:Request){try{await requireApi(true);const input=z.object({value:z.string().trim().min(1).max(200),language:z.enum(['AZ','RU','EN','mixed'])}).parse(await request.json());return NextResponse.json(getRepositories().keywords.create(input.value,input.language),{status:201});}catch(e){return apiError(e);}}
 export async function DELETE(request:Request){try{await requireApi(true);const{id}=z.object({id:z.number().int().positive()}).parse(await request.json());return NextResponse.json({deleted:getRepositories().keywords.remove(id)});}catch(e){return apiError(e);}}
