@@ -1,0 +1,27 @@
+{
+  "name": "ikimetr-realtor-collector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "db:migrate": "pnpm --filter @ikimetr/database db:migrate",
+    "dev": "concurrently -k -n web,worker -c cyan,magenta \"pnpm --filter @ikimetr/web dev\" \"pnpm --filter @ikimetr/worker dev\"",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:smoke": "pnpm --filter @ikimetr/web test:smoke",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@types/node": "^24.3.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.35.0",
+    "globals": "^16.3.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0",
+    "vitest": "^4.1.10"
+  }
+}
