@@ -21,3 +21,5 @@ playwright-profiles/
 *.log
 *.csv
 *.tsbuildinfo
+
+/.qwen/tmp/
