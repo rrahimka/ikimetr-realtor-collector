@@ -103,6 +103,9 @@ importers:
       csv-parse:
         specifier: ^6.1.0
         version: 6.2.1
+      domelementtype:
+        specifier: ^2.3.0
+        version: 2.3.0
     devDependencies:
       vitest:
         specifier: ^4.1.10
