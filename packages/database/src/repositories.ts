@@ -20,6 +20,11 @@ export function createRepositories(db: CollectorDatabase) {
     update(id: number, input: Partial<SourceInput>) { const old = this.get(id); if (!old) throw new Error('source not found'); const next = { ...old, ...input }; db.prepare('UPDATE sources SET name=?,type=?,locator=?,language=?,max_pages=?,max_depth=?,delay_ms=?,enabled=?,kill_switch=?,updated_at=? WHERE id=?').run(next.name,next.type,next.locator,next.language,next.maxPages,next.maxDepth,next.delayMs,Number(next.enabled),Number(next.killSwitch),now(),id); return this.get(id)!; },
     remove(id: number) { return db.prepare('DELETE FROM sources WHERE id=?').run(id).changes > 0; },
   };
+  const keywords = {
+    create(value:string,language:'AZ'|'RU'|'EN'|'mixed'){const result=db.prepare('INSERT OR IGNORE INTO keywords(value,language,created_at) VALUES(?,?,?)').run(value.trim(),language,now());if(!result.lastInsertRowid)return db.prepare('SELECT * FROM keywords WHERE value=?').get(value.trim()) as {id:number;value:string;language:string};return{id:Number(result.lastInsertRowid),value:value.trim(),language};},
+    list(){return db.prepare('SELECT * FROM keywords ORDER BY language,value').all() as Array<{id:number;value:string;language:string}>;},
+    remove(id:number){return db.prepare('DELETE FROM keywords WHERE id=?').run(id).changes>0;},
+  };
   const runs = {
     enqueue(sourceId: number) { try { const result = db.prepare("INSERT INTO runs(source_id,status,pages_checked,phones_found,unique_phones,cancellation_requested,needs_review,created_at) VALUES(?,'queued',0,0,0,0,0,?)").run(sourceId, now()); return this.get(Number(result.lastInsertRowid))!; } catch (error) { if (String(error).includes('UNIQUE')) throw new Error('source already has an active run'); throw error; } },
     get(id: number) { const row = db.prepare('SELECT * FROM runs WHERE id=?').get(id) as Record<string, unknown> | undefined; return row ? mapRun(row) : undefined; },
@@ -40,6 +45,9 @@ export function createRepositories(db: CollectorDatabase) {
   const reviews = {
     merge(targetId:number,sourceId:number,reason:string) { return db.transaction(() => { if (targetId===sourceId) throw new Error('cannot merge a contact into itself'); const result=db.prepare('INSERT INTO contact_merges(target_contact_id,source_contact_id,reason,merged_at) VALUES(?,?,?,?)').run(targetId,sourceId,reason,now()); db.prepare('UPDATE contacts SET merged_into_id=? WHERE id=?').run(targetId,sourceId); const id=Number(result.lastInsertRowid); audit.record('contact.merge','contact',sourceId,{targetId,reason}); return {id,targetId,sourceId}; })(); },
     undoMerge(id:number,reason:string) { return db.transaction(() => { const merge=db.prepare('SELECT * FROM contact_merges WHERE id=? AND undone_at IS NULL').get(id) as {source_contact_id:number}|undefined; if(!merge) throw new Error('active merge not found'); db.prepare('UPDATE contacts SET merged_into_id=NULL WHERE id=?').run(merge.source_contact_id); db.prepare('UPDATE contact_merges SET undone_at=?,undo_reason=? WHERE id=?').run(now(),reason,id); audit.record('contact.merge.undo','contact',merge.source_contact_id,{mergeId:id,reason}); })(); },
+    setStatus(contactId:number,status:'verified'|'rejected'|'unreviewed'){if(!contacts.get(contactId))throw new Error('contact not found');db.prepare('UPDATE contacts SET verification_status=? WHERE id=?').run(status,contactId);audit.record(`contact.${status}`,'contact',contactId,{status});return contacts.get(contactId)!;},
+    listMerges(){return db.prepare('SELECT * FROM contact_merges ORDER BY id DESC').all() as Array<Record<string,unknown>>;},
   };
-  return { sources, runs, contacts, reviews, audit };
+  const dashboard={stats(){return{sources:(db.prepare('SELECT COUNT(*) count FROM sources').get() as {count:number}).count,runs:(db.prepare('SELECT COUNT(*) count FROM runs').get() as {count:number}).count,contacts:(db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL').get() as {count:number}).count,newContacts:(db.prepare("SELECT COUNT(*) count FROM contacts WHERE first_seen_at>=datetime('now','-1 day')").get() as {count:number}).count,errors:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status='failed'").get() as {count:number}).count,active:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status IN ('queued','running')").get() as {count:number}).count};}};
+  return { sources, keywords, runs, contacts, reviews, audit, dashboard };
 }

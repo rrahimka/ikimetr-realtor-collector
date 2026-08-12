@@ -1,0 +1,2 @@
+export function csvCell(value:unknown):string{let text=String(value??'');if(/^[=+\-@]/.test(text))text=`'${text}`;return `"${text.replaceAll('"','""')}"`;}
+export function contactsCsv(rows:Array<Record<string,unknown>>):string{const keys=['name','type','originalPhone','normalizedPhone','agency','username','platform','verificationStatus','confidence','firstSeenAt','lastSeenAt'];return[`\uFEFF${keys.map(csvCell).join(',')}`,...rows.map(row=>keys.map(key=>csvCell(row[key])).join(','))].join('\r\n');}

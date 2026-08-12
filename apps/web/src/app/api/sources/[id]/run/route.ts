@@ -1,0 +1,2 @@
+import { NextResponse } from 'next/server';import { getRepositories } from '../../../../../lib/db.js';import { requireApi,apiError } from '../../../../../lib/http.js';
+export async function POST(_request:Request,{params}:{params:Promise<{id:string}>}){try{await requireApi(true);const{id}=await params;return NextResponse.json(getRepositories().runs.enqueue(Number(id)),{status:201});}catch(e){return apiError(e);}}

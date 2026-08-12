@@ -1,0 +1,6 @@
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+
+const TTL_MS=86_400_000;
+export function createSessionToken(secret:string,issuedAt=Date.now()):string{if(secret.length<16)throw new Error('SESSION_SECRET must contain at least 16 characters');const payload=Buffer.from(JSON.stringify({issuedAt,nonce:randomBytes(16).toString('hex')})).toString('base64url');const signature=createHmac('sha256',secret).update(payload).digest('base64url');return `${payload}.${signature}`;}
+export function verifySessionToken(token:string|undefined,secret:string,at=Date.now()):boolean{if(!token||secret.length<16)return false;const [payload,signature,extra]=token.split('.');if(!payload||!signature||extra)return false;const expected=createHmac('sha256',secret).update(payload).digest();let supplied:Buffer;try{supplied=Buffer.from(signature,'base64url');}catch{return false;}if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected))return false;try{const parsed=JSON.parse(Buffer.from(payload,'base64url').toString()) as {issuedAt:number};return Number.isFinite(parsed.issuedAt)&&at-parsed.issuedAt>=0&&at-parsed.issuedAt<=TTL_MS;}catch{return false;}}
+export function sessionCookieOptions(secure=process.env.NODE_ENV==='production'){return{httpOnly:true,sameSite:'strict' as const,path:'/',secure,maxAge:TTL_MS/1000};}

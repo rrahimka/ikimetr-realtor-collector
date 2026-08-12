@@ -1,0 +1,2 @@
+import { NextResponse } from 'next/server';import { z } from 'zod';import { getRepositories } from '../../../../lib/db.js';import { requireApi,apiError } from '../../../../lib/http.js';
+export async function POST(request:Request){try{await requireApi(true);const input=z.object({contactId:z.number().int().positive(),status:z.enum(['verified','rejected','unreviewed'])}).parse(await request.json());return NextResponse.json(getRepositories().reviews.setStatus(input.contactId,input.status));}catch(e){return apiError(e);}}

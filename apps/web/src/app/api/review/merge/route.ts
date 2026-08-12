@@ -1,0 +1,2 @@
+import { NextResponse } from 'next/server';import { z } from 'zod';import { getRepositories } from '../../../../lib/db.js';import { requireApi,apiError } from '../../../../lib/http.js';
+export async function POST(request:Request){try{await requireApi(true);const input=z.object({targetId:z.number().int().positive(),sourceId:z.number().int().positive(),reason:z.string().min(1).max(500)}).parse(await request.json());return NextResponse.json(getRepositories().reviews.merge(input.targetId,input.sourceId,input.reason));}catch(e){return apiError(e);}}

@@ -1,0 +1,2 @@
+import { getRepositories } from '../../lib/db.js';import { KeywordForm } from '../../components/keyword-form.js';
+export const dynamic='force-dynamic';export default function Keywords(){const rows=getRepositories().keywords.list();return <><p className="eyebrow">AZ · RU · EN · mixed</p><h1>Keywords</h1><KeywordForm/><div className="cards">{rows.map(k=><article className="card" key={k.id}><span className="badge">{k.language}</span><strong style={{fontSize:18}}>{k.value}</strong></article>)}</div></>}

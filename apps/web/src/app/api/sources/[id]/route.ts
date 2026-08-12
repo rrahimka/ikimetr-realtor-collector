@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server';import { sourceSchema } from '@ikimetr/core';import { getRepositories } from '../../../../lib/db.js';import { requireApi,apiError } from '../../../../lib/http.js';
+type C={params:Promise<{id:string}>};export async function PUT(request:Request,{params}:C){try{await requireApi(true);const{id}=await params;return NextResponse.json(getRepositories().sources.update(Number(id),sourceSchema.partial().parse(await request.json())));}catch(e){return apiError(e);}}
+export async function DELETE(_request:Request,{params}:C){try{await requireApi(true);const{id}=await params;return NextResponse.json({deleted:getRepositories().sources.remove(Number(id))});}catch(e){return apiError(e);}}

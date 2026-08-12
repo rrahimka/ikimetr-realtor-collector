@@ -1,0 +1,2 @@
+import { contactsCsv } from '../../../../lib/csv.js';import { getRepositories } from '../../../../lib/db.js';import { requireApi,apiError } from '../../../../lib/http.js';
+export async function GET(){try{await requireApi();return new Response(contactsCsv(getRepositories().contacts.list()),{headers:{'content-type':'text/csv; charset=utf-8','content-disposition':'attachment; filename="contacts.csv"'}});}catch(e){return apiError(e);}}

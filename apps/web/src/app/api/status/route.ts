@@ -1,0 +1,2 @@
+import { NextResponse } from 'next/server';import { getApifyStatus } from '@ikimetr/connectors';import { requireApi,apiError } from '../../../lib/http.js';
+export async function GET(){try{await requireApi();return NextResponse.json({apify:getApifyStatus(process.env),instagramEnabled:process.env.INSTAGRAM_ENABLED==='true',tiktokEnabled:process.env.TIKTOK_ENABLED==='true',maxResults:Number(process.env.APIFY_MAX_RESULTS??100)});}catch(e){return apiError(e);}}
