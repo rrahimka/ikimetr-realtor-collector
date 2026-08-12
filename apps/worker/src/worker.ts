@@ -1,5 +1,5 @@
-import { classifyEvidence, extractPhones, normalizePhone, type SourceInput } from '@ikimetr/core';
-import type { ConnectorEvidence, ConnectorResult } from '@ikimetr/connectors';
+import { classifyEvidence, extractPhones, normalizePhone } from '@ikimetr/core';
+import type { ConnectorResult } from '@ikimetr/connectors';
 import type { createRepositories } from '@ikimetr/database';
 
 type Repositories = ReturnType<typeof createRepositories>;

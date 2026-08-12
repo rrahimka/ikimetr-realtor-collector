@@ -8,7 +8,7 @@ const defaultResolver: AddressResolver = async (hostname) => (await lookup(hostn
 function isBlocked(address: string): boolean {
   let parsed: ipaddr.IPv4 | ipaddr.IPv6;
   try { parsed = ipaddr.parse(address); } catch { return true; }
-  if (parsed.kind() === 'ipv6' && parsed.isIPv4MappedAddress()) parsed = parsed.toIPv4Address();
+  if (parsed.kind() === 'ipv6') { const v6 = parsed as ipaddr.IPv6; if (v6.isIPv4MappedAddress()) parsed = v6.toIPv4Address(); }
   return parsed.range() !== 'unicast';
 }
 

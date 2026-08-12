@@ -9,7 +9,17 @@ export default tseslint.config(
   {
     languageOptions: {
       globals: { ...globals.node, ...globals.browser },
-      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+      parserOptions: {
+        project: [
+          './tsconfig.json',
+          './apps/web/tsconfig.json',
+          './apps/worker/tsconfig.json',
+          './packages/core/tsconfig.json',
+          './packages/database/tsconfig.json',
+          './packages/connectors/tsconfig.json',
+        ],
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     rules: {
       '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: false }],

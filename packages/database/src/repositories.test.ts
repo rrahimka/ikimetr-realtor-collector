@@ -43,7 +43,7 @@ describe('repositories', () => {
   it('merges contacts reversibly without deleting evidence', () => {
     const repos = setup(); const saved = repos.sources.create(source);
     const classification = { type: 'unknown' as const, confidence: 0.3, reasons: [], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-12T00:00:00.000Z' };
-    for (const [index, phone] of ['+994501111111', '+994502222222'].entries()) repos.contacts.persistEvidence({ normalizedPhone: phone!, isForeign: false, evidence: { sourceId: saved.id, sourceUrl: `https://example.com/${index}`, locationType: 'profile', excerpt: phone!, rawPhone: phone!, platform: 'website', fingerprint: `merge-fingerprint-${index}` }, classification });
+    for (const [index, phone] of ['+994501111111', '+994502222222'].entries()) repos.contacts.persistEvidence({ normalizedPhone: phone, isForeign: false, evidence: { sourceId: saved.id, sourceUrl: `https://example.com/${index}`, locationType: 'profile', excerpt: phone, rawPhone: phone, platform: 'website', fingerprint: `merge-fingerprint-${index}` }, classification });
     const contacts = repos.contacts.list();
     const merge = repos.reviews.merge(contacts[0]!.id, contacts[1]!.id, 'manual check');
     expect(repos.contacts.get(contacts[1]!.id)?.mergedIntoId).toBe(contacts[0]!.id);
