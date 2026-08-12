@@ -1,0 +1,71 @@
+{
+  "tools": {
+    "approvalMode": "default"
+  },
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Edit(.env)",
+      "Edit(.env.*)",
+      "Edit(**/.env)",
+      "Edit(**/.env.*)",
+      "Edit(.git/**)",
+      "Edit(.qwen/**)",
+      "Edit(pnpm-lock.yaml)",
+      "Edit(package-lock.json)",
+      "WebFetch",
+      "Agent",
+      "Bash(git *)",
+      "Bash(sudo *)",
+      "Bash(su *)",
+      "Bash(rm *)",
+      "Bash(mv *)",
+      "Bash(cp *)",
+      "Bash(chmod *)",
+      "Bash(chown *)",
+      "Bash(kill *)",
+      "Bash(pkill *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(npx *)",
+      "Bash(npm *)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm remove *)",
+      "Bash(pnpm exec playwright install *)",
+      "Bash(corepack *)",
+      "Bash(bash *)",
+      "Bash(sh *)",
+      "Bash(zsh *)",
+      "Bash(node *)",
+      "Bash(python *)",
+      "Bash(python3 *)"
+    ],
+    "autoMode": {
+      "classifyAllShell": true,
+      "hints": {
+        "allow": [
+          "Read-only inspection inside the current ikimetr-realtor-collector repository",
+          "Editing ordinary source and test files only inside the current repository",
+          "Running pnpm lint, pnpm typecheck, pnpm test, pnpm build, and pnpm --filter @ikimetr/web test:smoke"
+        ],
+        "deny": [
+          "Any access outside the current ikimetr-realtor-collector repository",
+          "Any external network request",
+          "Any package installation or dependency change",
+          "Any Git mutation including commit, push, checkout, switch, reset, clean, merge, rebase, or branch changes",
+          "Any destructive, privileged, persistence, credential, or secret-related operation"
+        ]
+      },
+      "environment": [
+        "Work only in /mnt/c/Users/9305r/Desktop/ikimetr-realtor-collector",
+        "The separate /mnt/c/Users/9305r/Desktop/ikimetr project is forbidden",
+        "The current safety branch and verified bundle backup must be preserved"
+      ]
+    }
+  },
+  "$version": 4
+}
