@@ -26,6 +26,7 @@ export default defineConfig({
       DATABASE_URL: process.env.DATABASE_URL ?? '',
       LOCAL_AUTH_PASSWORD: process.env.LOCAL_AUTH_PASSWORD ?? '',
       SESSION_SECRET: process.env.SESSION_SECRET ?? '',
+      IKIMETR_SMOKE_DISABLE_TURBO_CACHE: '1',
     },
   },
 });
