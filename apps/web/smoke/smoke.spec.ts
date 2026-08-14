@@ -118,7 +118,7 @@ test('collector pipeline: login → fixture source → run → worker → contac
     .poll(
       async () => {
         await page.goto('/runs');
-        return page.getByText('completed', { exact: true }).count();
+        return page.getByText('завершено', { exact: true }).count();
       },
       { timeout: 30_000 },
     )
@@ -141,4 +141,32 @@ test('collector pipeline: login → fixture source → run → worker → contac
   expect(csv.trim()).not.toBe('');
   expect(csv).toContain('994501234567');
   expect(csv).toContain("'+994501234567");
+});
+
+test('language toggle and CSV import report', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('input[name="password"]', 'smoke-test-password');
+  await page.getByRole('button', { name: 'Войти' }).click();
+  await expect(page).toHaveURL('/');
+
+  // Switch to Azerbaijani, verify the dashboard and nav, then switch back.
+  await page.getByRole('button', { name: 'AZ' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Panel');
+  await expect(page.getByRole('link', { name: 'Əlaqələr' })).toBeVisible();
+  await page.getByRole('button', { name: 'RU' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dashboard');
+
+  // Import a contacts CSV and verify accepted + idempotent duplicate report.
+  await page.goto('/contacts');
+  const csvText = 'phone,name,agency,platform\n050 999 88 77,Fixture Importer,Test Agentliyi,website\n';
+  const file = { name: 'contacts.csv', mimeType: 'text/csv', buffer: Buffer.from(csvText, 'utf8') };
+  await page.setInputFiles('input[type="file"]', file);
+  await page.getByRole('button', { name: 'Импортировать' }).click();
+  await expect(page.getByText('Принято')).toBeVisible();
+  await expect(page.getByText('+994509998877').first()).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', file);
+  await page.getByRole('button', { name: 'Импортировать' }).click();
+  await expect(page.getByText('Дубликаты')).toBeVisible();
+  await expect(page.getByText('+994509998877').first()).toBeVisible();
 });
