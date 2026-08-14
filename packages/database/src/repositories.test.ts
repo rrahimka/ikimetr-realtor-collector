@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createDatabase, createRepositories, type CollectorDatabase } from './index.js';
+import { seedDemoData } from './seed.js';
 
 let db: CollectorDatabase | undefined;
 afterEach(() => db?.close());
@@ -51,5 +52,31 @@ describe('repositories', () => {
     repos.reviews.undoMerge(merge.id, 'mistake');
     expect(repos.contacts.get(contacts[1]!.id)?.mergedIntoId).toBeNull();
     expect(repos.audit.list().map((item) => item.action)).toEqual(['contact.merge', 'contact.merge.undo']);
+  });
+
+  it('filters contacts by type, platform, verification status and origin', () => {
+    const repos = setup(); const saved = repos.sources.create(source);
+    const seed = (phone: string, type: 'agent' | 'unknown', platform: string, isForeign: boolean) => repos.contacts.persistEvidence({ normalizedPhone: phone, isForeign, evidence: { sourceId: saved.id, sourceUrl: `https://example.com/${phone}`, locationType: 'listing', excerpt: phone, rawPhone: phone, platform, fingerprint: `filter-${phone}` }, classification: { type, confidence: 0.8, reasons: [], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-12T00:00:00.000Z' } });
+    const a = seed('+994501111111', 'agent', 'website', false);
+    const b = seed('+994502222222', 'unknown', 'google-maps', false);
+    seed('+79161111111', 'agent', 'website', true);
+    repos.reviews.setStatus(a.id, 'verified');
+    repos.reviews.setStatus(b.id, 'rejected');
+    expect(repos.contacts.list('', { type: 'agent' })).toHaveLength(2);
+    expect(repos.contacts.list('', { platform: 'google-maps' })).toHaveLength(1);
+    expect(repos.contacts.list('', { verificationStatus: 'verified' })).toHaveLength(1);
+    expect(repos.contacts.list('', { isForeign: true })).toHaveLength(1);
+    expect(repos.contacts.list('', { type: 'agent', verificationStatus: 'verified' })).toHaveLength(1);
+    expect(repos.contacts.list('', { type: 'agent', isForeign: false })).toHaveLength(1);
+  });
+
+  it('seeds demo keywords and a fixture source idempotently', () => {
+    const repos = setup();
+    const first = seedDemoData(db!);
+    const second = seedDemoData(db!);
+    expect(first.sourceCreated).toBe(true);
+    expect(second.sourceCreated).toBe(false);
+    expect(repos.sources.list().filter((s) => s.type === 'test_fixture')).toHaveLength(1);
+    expect(repos.keywords.list()).toHaveLength(8);
   });
 });
