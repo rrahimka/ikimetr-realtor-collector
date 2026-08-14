@@ -55,6 +55,7 @@ function track(child) {
  */
 function signalTree(child, signal) {
   try {
+    if (child.pid === undefined) throw new Error('Child process has no pid');
     process.kill(-child.pid, signal);
   } catch {
     if (child.exitCode === null && child.signalCode === null) child.kill(signal);
