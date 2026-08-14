@@ -6,6 +6,7 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": {
     "db:migrate": "tsx src/migrate.ts",
+    "db:seed": "tsx src/seed.ts",
     "test": "vitest run --root ../.. packages/database/src",
     "typecheck": "tsc --noEmit"
   },
