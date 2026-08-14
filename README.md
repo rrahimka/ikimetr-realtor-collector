@@ -88,10 +88,45 @@ Open `http://127.0.0.1:3000`, enter the password from `LOCAL_AUTH_PASSWORD`.
    Google Maps CSV import**.
 8. Stop services with `Ctrl+C`.
 
+## Language
+
+The panel is available in Russian (default) and Azerbaijani. Use the `RU / AZ`
+toggle in the sidebar; the choice is stored in an `HttpOnly` cookie and persists
+across pages. Internal enum values (run status, contact type, verification
+status) are shown as localised labels while the stored database values stay
+unchanged.
+
 ## CSV
 
-- Export: `Contacts → CSV экспорт` (UTF-8 with BOM, formula-injection safe).
-- Import: Google Maps CSV (gosom format) under 5 MB, via the Sources page.
+- Export: `Contacts → CSV экспорт` (UTF-8 with BOM, formula-injection safe:
+  leading `= + - @` are prefixed with `'`).
+- Import: `Contacts → Импорт CSV контактов` upload form. The same endpoint
+  serves a downloadable template (`GET /api/import/contacts`).
+
+Import format (header row required; `phone` is the only mandatory column):
+
+```csv
+phone,name,agency,username,platform,source_url,location_type,excerpt
+0501234567,Aysel Məmmədova,Bakı Emlak,,website,https://fixture.invalid/1,listing,"Bakı əmlakçı, mənzil satışı"
+```
+
+Rules:
+
+- Maximum file size 5 MB; UTF-8; `.csv`.
+- `phone` is normalised to E.164 via the existing core code.
+- Optional columns: `name`, `agency`, `username`, `platform`, `source_url`,
+  `location_type` (`profile|listing|post|comment`), `excerpt`.
+- The import is idempotent: re-importing the same phone does not create a new
+  contact.
+
+The report shows:
+
+- `total` — data rows in the file;
+- `accepted` — new contacts created;
+- `rejected` — invalid rows (with a per-row reason, e.g. `invalid phone`);
+- `duplicates` — rows whose normalised phone already existed.
+
+Google Maps CSV import (gosom format) remains available from the Sources page.
 
 ## Tests and verification
 
