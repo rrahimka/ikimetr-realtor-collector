@@ -5,10 +5,16 @@ Guidance for AI agents working in `ikimetr-realtor-collector`.
 ## Safety policy
 
 - This is a **local-only** MVP. Bind web/worker to `127.0.0.1`.
-- Use **artificial fixtures and mocks only**. Never contact real people, real
-  listing sites, TikTok, Instagram, WhatsApp, or production APIs.
-- Never collect real personal data, send messages, add people to groups, or
-  bypass CAPTCHA/robots.txt/auth/rate limits.
+- Automated tests and every connector except `bina_agency` use **artificial
+  fixtures and mocks only** and must never contact real sites or production
+  APIs. The dedicated `bina_agency` connector may make real requests only when
+  both `BINA_ENABLED=true` and `BINA_PERMISSION_CONFIRMED=true` are set locally.
+- Real `bina_agency` traffic is limited to exact HTTPS hosts `bina.az` and
+  `www.bina.az`, and may retain only publicly displayed business contacts from
+  listings visibly marked `Agentlik`.
+- Never send messages, add people to groups, collect private sellers, or bypass
+  CAPTCHA, robots.txt, authentication, or rate limits. Proxies, stealth,
+  fingerprint evasion, hidden/private APIs, and outreach are prohibited.
 - Keep secrets in environment variables only; never commit `.env`, tokens,
   passwords, or session secrets.
 - Use `+994…` style numbers only when they are clearly artificial fixtures.
@@ -42,8 +48,10 @@ All must exit `0`.
 - Do not add dependencies without proven necessity.
 - Do not modify `.qwen/settings.json`, Windows security settings, or WDAC.
 - Mock external HTTP in tests; permit the artificial fixture connector only
-  when `ALLOW_TEST_CONNECTOR=true` is explicitly set.
-- Do not collect real data or make production requests.
+  when `ALLOW_TEST_CONNECTOR=true` is explicitly set. Tests must never enable
+  real Bina traffic.
+- Do not store permission letters, browser profiles, cookies, raw HTML, media,
+  full descriptions, or full phone numbers in logs.
 
 ## Key files
 
