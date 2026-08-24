@@ -69,7 +69,15 @@ test('collector pipeline: login → fixture source → run → worker → contac
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Realtor Collector');
   await page.fill('input[name="password"]', 'smoke-test-password');
   await page.getByRole('button', { name: 'Войти' }).click();
-  await expect(page).toHaveURL('/');
+  try {
+    await expect(page).toHaveURL('/', { timeout: 15_000 });
+  } catch {
+    // A cold Next.js dev compile can reset the first request once; retry only
+    // after the page is confirmed to still be on the login form.
+    await expect(page).toHaveURL(/\/login/);
+    await page.getByRole('button', { name: 'Войти' }).click();
+    await expect(page).toHaveURL('/');
+  }
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dashboard');
 
   // 2. Create the test_fixture source through the authenticated API.
@@ -125,13 +133,29 @@ test('collector pipeline: login → fixture source → run → worker → contac
     .toBeGreaterThan(0);
   await expect(page.getByText('1 / 1', { exact: true }).first()).toBeVisible();
 
-  // 6. Verify the contact is observable through the UI.
+  // 6. Re-run the same fixture and verify deterministic phone deduplication.
+  const rerun = await apiRequest(page, 'POST', `/api/sources/${sourceId}/run`);
+  expect(rerun.status).toBe(201);
+  await expect
+    .poll(
+      async () => {
+        await page.goto('/runs');
+        return page.getByText('завершено', { exact: true }).count();
+      },
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(1);
+  const contactsAfterRerun = await apiRequest(page, 'GET', '/api/contacts');
+  if (!isRecordArray(contactsAfterRerun.data)) throw new Error('contacts returned an unexpected payload');
+  expect(contactsAfterRerun.data.filter((row) => row.normalizedPhone === '+994501234567')).toHaveLength(1);
+
+  // 7. Verify the contact is observable through the UI.
   await page.goto('/contacts');
   await expect(page.getByText('+994501234567').first()).toBeVisible();
   await expect(page.getByText('Aysel Məmmədova').first()).toBeVisible();
   await expect(page.getByText('Bakı Emlak').first()).toBeVisible();
 
-  // 7. CSV export through the normal UI download path.
+  // 8. CSV export through the normal UI download path.
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('link', { name: 'CSV экспорт' }).click();
   const download = await downloadPromise;

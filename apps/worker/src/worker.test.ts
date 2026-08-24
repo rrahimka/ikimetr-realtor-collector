@@ -1,9 +1,17 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDatabase, createRepositories, type CollectorDatabase } from '@ikimetr/database';
+import { createConnectorRunner } from './connectors.js';
 import { runWorkerOnce } from './worker.js';
 
-let db:CollectorDatabase|undefined; afterEach(()=>db?.close());
+let db:CollectorDatabase|undefined; afterEach(()=>{db?.close();vi.restoreAllMocks();});
 function setup(){db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Fixture',type:'test_fixture',locator:'fixture://contacts',language:'mixed',maxPages:1,maxDepth:0,delayMs:0,enabled:true,killSwitch:false});const run=repos.runs.enqueue(source.id);return{repos,source,run};}
+
+describe('createConnectorRunner',()=>{
+  it('allows the artificial fixture when it is explicitly enabled outside NODE_ENV=test',async()=>{const {source}=setup();await expect(createConnectorRunner({ALLOW_TEST_CONNECTOR:'true'})(source)).resolves.toMatchObject({pagesChecked:1,estimatedItems:1});});
+  it('blocks the artificial fixture with an empty environment',async()=>{const {source}=setup();await expect(createConnectorRunner({})(source)).rejects.toThrow('Test connector is disabled outside tests');});
+  it('blocks the artificial fixture when it is explicitly disabled',async()=>{const {source}=setup();await expect(createConnectorRunner({ALLOW_TEST_CONNECTOR:'false'})(source)).rejects.toThrow('Test connector is disabled outside tests');});
+  it('produces only the artificial normalized fixture contact without network access',async()=>{const {repos,run}=setup();const fetchSpy=vi.spyOn(globalThis,'fetch').mockRejectedValue(new Error('network access is forbidden'));await runWorkerOnce(repos,createConnectorRunner({ALLOW_TEST_CONNECTOR:'true'}));expect(repos.runs.get(run.id)).toMatchObject({status:'completed',pagesChecked:1,phonesFound:1,uniquePhones:1});expect(repos.contacts.list()).toEqual([expect.objectContaining({normalizedPhone:'+994501234567',name:'Aysel Məmmədova',platform:'fixture'})]);expect(fetchSpy).not.toHaveBeenCalled();});
+});
 
 describe('worker',()=>{
   it('processes connector evidence into a classified normalized contact',async()=>{const {repos,run}=setup();await runWorkerOnce(repos,()=>Promise.resolve({pagesChecked:1,estimatedItems:1,items:[{sourceUrl:'https://fixture.invalid/page',locationType:'listing',excerpt:'Bakı əmlakçı 050 123 45 67, çoxlu mənzil satışı',rawPhone:'050 123 45 67',platform:'fixture',fingerprint:'worker-fingerprint-1'}]}));expect(repos.runs.get(run.id)).toMatchObject({status:'completed',pagesChecked:1,phonesFound:1,uniquePhones:1});expect(repos.contacts.list()[0]).toMatchObject({normalizedPhone:'+994501234567',type:'agent'});});

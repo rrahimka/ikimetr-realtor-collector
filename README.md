@@ -48,6 +48,17 @@ LOCAL_AUTH_PASSWORD=<strong local password>
 SESSION_SECRET=<random secret, at least 16 characters>
 ```
 
+The artificial local-demo fixture is disabled by default. Enable only that
+fixture for a demo by starting the services with:
+
+```bash
+ALLOW_TEST_CONNECTOR=true pnpm dev
+```
+
+Alternatively, set `ALLOW_TEST_CONNECTOR=true` in the local `.env`. This flag
+enables only the artificial `test_fixture`; it does not enable real external
+sources.
+
 `pnpm dev` loads the root `.env` automatically — no need to `source .env` or
 `export` variables beforehand. A relative `DATABASE_URL` resolves against
 `packages/database`, so web, worker, migrate and seed all open the same file
@@ -84,7 +95,7 @@ Open `http://127.0.0.1:3000`, enter the password from `LOCAL_AUTH_PASSWORD`.
 
 1. `pnpm install --frozen-lockfile`, `cp .env.example .env`,
    `pnpm db:migrate`, `pnpm db:seed`.
-2. `pnpm dev`, log in.
+2. `ALLOW_TEST_CONNECTOR=true pnpm dev`, log in.
 3. On **Sources**, create a `test_fixture` source with locator
    `fixture://contacts` (or reuse the seeded one) and enqueue a run.
 4. On **Runs**, watch the worker move it `queued → running → completed`.

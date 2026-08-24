@@ -1,4 +1,22 @@
-# Handoff — 2026-08-24 checkpoint (local `pnpm dev` fix)
+# Handoff — 2026-08-24 checkpoint (explicit local fixture opt-in)
+
+## Current fix
+
+- Branch: `safety/qwen-collector-2026-08-12`.
+- `test_fixture` is now gated solely by the explicit
+  `ALLOW_TEST_CONNECTOR=true` opt-in; it remains blocked when the variable is
+  absent or `false`.
+- The smoke worker no longer depends on `NODE_ENV=test`, and the smoke pipeline
+  repeats the fixture run to verify phone deduplication.
+- `.env.example` defaults the opt-in to `false`; README documents the exact
+  local-demo command and that the flag does not enable external sources.
+- Targeted worker tests: 7 passed, including explicit enable/disable, the
+  artificial contact, normalized `+994501234567`, and no network access.
+- Controlled `ALLOW_TEST_CONNECTOR=true pnpm dev` with a temporary SQLite DB:
+  web Ready, worker started, two runs completed, one Aysel Məmmədova contact,
+  deduplication confirmed, and both processes stopped cleanly.
+
+## Previous checkpoint: shared database path and root `.env` loading
 
 ## Repository state
 

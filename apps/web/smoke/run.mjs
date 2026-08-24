@@ -19,9 +19,9 @@ const baseEnv = {
 
 const workerEnv = {
   ...baseEnv,
-  NODE_ENV: 'test',
   ALLOW_TEST_CONNECTOR: 'true',
 };
+delete workerEnv.NODE_ENV;
 
 const webEnv = { ...baseEnv };
 delete webEnv.NODE_ENV;

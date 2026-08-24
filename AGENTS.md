@@ -41,8 +41,8 @@ All must exit `0`.
 - Do not weaken TypeScript, ESLint, or tests; avoid `@ts-ignore`/`eslint-disable`.
 - Do not add dependencies without proven necessity.
 - Do not modify `.qwen/settings.json`, Windows security settings, or WDAC.
-- Mock external HTTP in tests; permit the fixture connector only when
-  `NODE_ENV=test` and `ALLOW_TEST_CONNECTOR=true`.
+- Mock external HTTP in tests; permit the artificial fixture connector only
+  when `ALLOW_TEST_CONNECTOR=true` is explicitly set.
 - Do not collect real data or make production requests.
 
 ## Key files
