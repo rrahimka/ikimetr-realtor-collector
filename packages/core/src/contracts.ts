@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const SOURCE_TYPES = ['website', 'listing_page', 'google_maps_query', 'instagram_profile', 'instagram_post', 'instagram_hashtag', 'tiktok_profile', 'tiktok_video', 'tiktok_hashtag', 'tiktok_keyword', 'test_fixture'] as const;
+export const SOURCE_TYPES = ['website', 'listing_page', 'google_maps_query', 'instagram_profile', 'instagram_post', 'instagram_hashtag', 'tiktok_profile', 'tiktok_video', 'tiktok_hashtag', 'tiktok_keyword', 'bina_agency', 'test_fixture'] as const;
 
 export const sourceSchema = z.object({
   id: z.number().int().positive().optional(),
@@ -13,6 +13,11 @@ export const sourceSchema = z.object({
   delayMs: z.coerce.number().int().min(0).max(60_000).default(1_000),
   enabled: z.coerce.boolean().default(true),
   killSwitch: z.coerce.boolean().default(false),
+}).superRefine((source, context) => {
+  if (source.type !== 'bina_agency') return;
+  if (source.maxPages > 100) context.addIssue({ code: 'custom', path: ['maxPages'], message: 'Bina sources are limited to 100 listings' });
+  if (source.maxDepth !== 0) context.addIssue({ code: 'custom', path: ['maxDepth'], message: 'Bina source depth must be zero' });
+  if (source.delayMs < 10_000) context.addIssue({ code: 'custom', path: ['delayMs'], message: 'Bina source delay must be at least 10000 ms' });
 });
 
 export const evidenceSchema = z.object({
