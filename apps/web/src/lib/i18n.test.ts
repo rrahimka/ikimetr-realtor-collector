@@ -29,6 +29,19 @@ describe('i18n', () => {
     expect(tEnum('az', 'status', 'verified')).toBe('təsdiqləndi');
     expect(tEnum('ru', 'run', 'completed')).toBe('завершено');
     expect(tEnum('az', 'type', 'agency')).toBe('agentlik');
+    expect(tEnum('ru', 'run', 'blocked')).toBe('заблокировано');
+    expect(tEnum('az', 'run', 'blocked')).toBe('bloklandı');
+  });
+
+  it('localises Bina automation and outcome labels in both languages', () => {
+    expect(t('ru', 'sourceType.binaAgency')).toBe('Bina.az — агентства');
+    expect(t('az', 'sourceType.binaAgency')).toBe('Bina.az — agentliklər');
+    expect(t('ru', 'bina.automatic')).toBe('Автоматический сбор');
+    expect(t('az', 'bina.interval')).toBe('Hər 6 saatdan bir');
+    for (const key of ['bina.lastRun', 'bina.nextRun', 'bina.pagesChecked', 'bina.agenciesFound', 'bina.newContacts', 'bina.duplicates', 'bina.privateSkipped', 'bina.stopReason']) {
+      expect(t('ru', key)).not.toBe(key);
+      expect(t('az', key)).not.toBe(key);
+    }
   });
 
   it('localises every classification reason emitted by the classifier', () => {
@@ -64,6 +77,9 @@ describe('i18n', () => {
       'sources.eyebrow', 'sources.kill', 'runs.title', 'runs.eyebrow', 'review.title', 'review.eyebrow',
       'keywords.title', 'import.submit', 'import.downloadTemplate', 'import.templateHint', 'import.accepted',
       'import.rejected', 'import.duplicates', 'common.logout',
+      'sourceType.binaAgency', 'bina.automatic', 'bina.interval', 'bina.lastRun', 'bina.nextRun',
+      'bina.pagesChecked', 'bina.agenciesFound', 'bina.newContacts', 'bina.duplicates',
+      'bina.privateSkipped', 'bina.stopReason',
     ];
     for (const key of keys) {
       expect(t('ru', key)).not.toBe(key);
