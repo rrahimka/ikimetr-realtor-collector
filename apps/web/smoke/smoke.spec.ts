@@ -84,6 +84,34 @@ test('collector pipeline: login → fixture source → run → worker → contac
   }
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');
 
+  // Bina source configuration is exercised without enabling or invoking its
+  // connector. Only the two exact HTTPS hosts are accepted by the API.
+  const safeBina = await apiRequest(page, 'POST', '/api/sources', {
+    name: 'Bina.az Agentlik',
+    type: 'bina_agency',
+    locator: 'https://bina.az/baki/alqi-satqi/menziller',
+    language: 'AZ',
+    maxPages: 100,
+    maxDepth: 0,
+    delayMs: 10_000,
+    enabled: true,
+    killSwitch: false,
+  });
+  expect(safeBina.status).toBe(201);
+
+  const lookalikeBina = await apiRequest(page, 'POST', '/api/sources', {
+    name: 'Unsafe Bina lookalike',
+    type: 'bina_agency',
+    locator: 'https://bina.az.evil.test/items/1',
+    language: 'AZ',
+    maxPages: 5,
+    maxDepth: 0,
+    delayMs: 10_000,
+    enabled: true,
+    killSwitch: false,
+  });
+  expect(lookalikeBina.status).toBe(400);
+
   // 2. Create the test_fixture source through the authenticated API.
   //    test_fixture is intentionally not exposed by the production SourceForm,
   //    so the narrowest setup is a CSRF-aware API call.

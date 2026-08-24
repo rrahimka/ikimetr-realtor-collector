@@ -15,6 +15,8 @@ const baseEnv = {
   DATABASE_URL: dbPath,
   LOCAL_AUTH_PASSWORD: 'smoke-test-password',
   SESSION_SECRET: 'smoke-test-secret-at-least-16-chars',
+  BINA_ENABLED: 'false',
+  BINA_PERMISSION_CONFIRMED: 'false',
 };
 
 const workerEnv = {

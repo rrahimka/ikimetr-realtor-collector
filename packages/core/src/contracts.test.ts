@@ -31,6 +31,20 @@ describe('bina_agency source contract', () => {
     expect(() => sourceSchema.parse({ ...binaSource, ...override })).toThrow();
   });
 
+  it.each([
+    'http://bina.az/baki/alqi-satqi/menziller',
+    'https://bina.az.evil.test/items/1',
+    'https://user:pass@bina.az/items/1',
+    'https://bina.az:444/items/1',
+    'file:///tmp/bina.html',
+  ])('rejects unsafe Bina locator %s', (locator) => {
+    expect(() => sourceSchema.parse({ ...binaSource, locator })).toThrow();
+  });
+
+  it('accepts the exact www host over HTTPS', () => {
+    expect(sourceSchema.parse({ ...binaSource, locator: 'https://www.bina.az/baki' }).locator).toBe('https://www.bina.az/baki');
+  });
+
   it('does not impose Bina limits on the artificial fixture source', () => {
     expect(sourceSchema.parse({
       ...binaSource,

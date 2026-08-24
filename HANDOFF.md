@@ -1,75 +1,70 @@
-# Handoff — 2026-08-24 checkpoint (RU/AZ polish)
-
-## Current fix
-
-- Completed the remaining RU/AZ UI localisation in the existing central dictionary, including navigation, page headings, classification reasons, CSV validation messages, and distinct export/import-template copy.
-- Contact, evidence, and run timestamps now use one server-side formatter with the `Asia/Baku` time zone and deterministic `DD.MM.YYYY, HH:mm` output.
-- The contact import template downloads as `template.csv`; `contacts.csv` remains the export report and the CSV schema/API are unchanged.
-- The smoke flow now checks rejected/accepted login, RU/AZ persistence after reload, fixture deduplication and evidence, contact filtering, review verification, export, localised invalid-CSV handling, and template-based idempotent import.
-- Controlled smoke on a fresh temporary SQLite database passed 2 tests with external HTTP and WebSocket requests blocked.
-
-## Previous checkpoint: explicit local fixture opt-in
-
-- Branch: `safety/qwen-collector-2026-08-12`.
-- `test_fixture` is now gated solely by the explicit
-  `ALLOW_TEST_CONNECTOR=true` opt-in; it remains blocked when the variable is
-  absent or `false`.
-- The smoke worker no longer depends on `NODE_ENV=test`, and the smoke pipeline
-  repeats the fixture run to verify phone deduplication.
-- `.env.example` defaults the opt-in to `false`; README documents the exact
-  local-demo command and that the flag does not enable external sources.
-- Targeted worker tests: 7 passed, including explicit enable/disable, the
-  artificial contact, normalized `+994501234567`, and no network access.
-- Controlled `ALLOW_TEST_CONNECTOR=true pnpm dev` with a temporary SQLite DB:
-  web Ready, worker started, two runs completed, one Aysel Məmmədova contact,
-  deduplication confirmed, and both processes stopped cleanly.
-
-## Previous checkpoint: shared database path and root `.env` loading
+# Handoff — 2026-08-25 Bina agency pilot (offline implementation)
 
 ## Repository state
 
 - Path: `/mnt/c/Users/9305r/Desktop/ikimetr-realtor-collector`
-- Branch: `safety/qwen-collector-2026-08-12` (pushed to `origin/safety/qwen-collector-2026-08-12`)
+- Branch: `feature/bina-agency-pilot`
+- Stable base (unchanged): `f15332dedbdc5c16c9017d5ca66cd7dccdc9634d`
+- Task 6 implementation head: `74fd79c`
+- No push, merge, live Bina request, `.env` permission change, or real Task
+  Scheduler installation has occurred at this checkpoint.
 
-## Environment (WSL Ubuntu)
+## Implemented
 
-- Node `v24.19.0` (nvm: `export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh"`).
-- pnpm `11.21.0`.
+- Added `bina_agency` with exact HTTPS host validation, 100-listing cap,
+  depth 0, at least 10-second delay, and two independent permission flags.
+- Added pure discovery/phone/agency rules and an offline-tested Playwright
+  runner. It uses one browser sequentially, blocks third parties and heavy
+  resources, clicks only the visible phone control, and stops on protection or
+  structural signals without bypass.
+- Added the `blocked` run status with a data-preserving SQLite migration,
+  aggregate audit summaries, dedup/recheck support, and preservation of manual
+  verification status.
+- Added SQLite-backed six-hour scheduling, 24-hour blocked cooldown, no
+  overlap, restart recovery, kill/cancel handling, and 7-day URL recheck.
+- Added `pnpm start:local`, bounded log rotation/flock, and idempotent PowerShell
+  install/status/uninstall scripts for `IkiMetrRealtorCollector`.
+- Added RU/AZ source defaults, automatic interval, last/next run, metrics,
+  blocked status, and safe stop-reason views while preserving manual Run and
+  kill controls.
 
-## What this milestone fixes
+## Safety state
 
-Manual `pnpm dev` used to crash the worker with
-`TypeError: Cannot open database because the directory does not exist`,
-because a relative `DATABASE_URL` (`./data/collector.db`) resolved against each
-process's own `process.cwd()` (migrate/seed → `packages/database`, worker →
-`apps/worker`, web → `apps/web`), so they looked at different databases, and
-the root `.env` was never loaded by the `concurrently` dev script.
+- Real navigation requires `BINA_ENABLED=true` and
+  `BINA_PERMISSION_CONFIRMED=true`; defaults and smoke explicitly set both
+  false.
+- Exact network scope is `https://bina.az` and `https://www.bina.az`; lookalike,
+  HTTP, credentials, non-default ports, external redirects, downloads, and
+  third-party WebSockets are rejected.
+- Tests use only artificial fixtures and temporary databases. No full phones,
+  secrets, cookies, HTML, or `.env` values are emitted by the connector.
+- The permission letter stays outside Git.
 
-- `packages/database/src/client.ts` now exports `resolveDatabasePath()`: `:memory:`
-  and absolute paths pass through; relative paths resolve against the database
-  package directory (never `cwd`). `createDatabase()` also creates the parent
-  directory and applies the same resolver, so migrate/seed/web/worker all open
-  one shared database.
-- New root launcher `scripts/dev.mjs` loads the root `.env` (without overriding
-  already-set variables) and then runs `concurrently` for web + worker. The root
-  `dev` script is now `node scripts/dev.mjs`, so `pnpm dev` works with no manual
-  `source .env` / `export`.
-- `apps/web/src/lib/db.ts`, `packages/database/src/migrate.ts` and `seed.ts`
-  were simplified to use the single resolver.
+## Verified at this checkpoint
 
-## Verified (all exit 0)
+- Bina locator contract: 11 tests passed after confirming 5 URL cases RED.
+- UI targeted tests and `@ikimetr/web` typecheck: exit 0.
+- Offline smoke: 2 passed (temporary SQLite, global external HTTP/WebSocket
+  blocking, Bina connector disabled). It accepted the exact source and rejected
+  `bina.az.evil.test` through the authenticated API.
+- A stale project `next dev` from an earlier session was identified by exact
+  command path and stopped gracefully before the successful smoke rerun.
 
-- `pnpm test` — 66 passed (14 files, incl. new `client.test.ts` and `scripts/dev.test.mjs`).
-- `pnpm typecheck` — 5 packages.
-- `pnpm lint` — no errors/warnings.
-- `pnpm build` — next build + worker tsc.
-- `pnpm test:smoke` — 2 passed.
-- `git diff --check` — clean.
+## Required next steps
 
-A controlled `pnpm dev` run confirmed web reports `Ready` on `127.0.0.1:3000`,
-worker reports `Worker started` with no SQLite error, login uses
-`LOCAL_AUTH_PASSWORD`, and both processes shut down cleanly on SIGINT/SIGTERM.
+1. Commit the smoke/docs task.
+2. Run `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`,
+   `pnpm test:smoke`, and `git diff --check` twice sequentially without edits.
+3. Perform the release safety audit and mandatory independent review of
+   `f15332d..HEAD`; fix every Critical/Important finding test-first and restart
+   both passes if any file changes.
+4. Only then update the ignored local `.env` keys, run one five-listing live
+   acceptance and one dedup rerun, stopping on any protection/private-seller
+   false-positive signal.
+5. Install autostart only after successful live acceptance, verify status,
+   local health, scheduler, flock, and restart recovery.
+6. Record aggregate acceptance results without real phone data, push the
+   feature branch non-force, rerun smoke, and prove local/remote SHA equality.
 
-## Next task
-
-None required. Optional: document a clean-demo script against a throwaway DB.
+See `README.md`, the design in `docs/superpowers/specs/`, and the implementation
+plan in `docs/superpowers/plans/` for exact commands and invariants.

@@ -15,6 +15,15 @@ export const sourceSchema = z.object({
   killSwitch: z.coerce.boolean().default(false),
 }).superRefine((source, context) => {
   if (source.type !== 'bina_agency') return;
+  try {
+    const locator = new URL(source.locator);
+    const exactHost = locator.hostname === 'bina.az' || locator.hostname === 'www.bina.az';
+    if (locator.protocol !== 'https:' || !exactHost || locator.username || locator.password || locator.port) {
+      context.addIssue({ code: 'custom', path: ['locator'], message: 'Bina locator must use an exact allowed HTTPS host' });
+    }
+  } catch {
+    context.addIssue({ code: 'custom', path: ['locator'], message: 'Bina locator must be a valid absolute URL' });
+  }
   if (source.maxPages > 100) context.addIssue({ code: 'custom', path: ['maxPages'], message: 'Bina sources are limited to 100 listings' });
   if (source.maxDepth !== 0) context.addIssue({ code: 'custom', path: ['maxDepth'], message: 'Bina source depth must be zero' });
   if (source.delayMs < 10_000) context.addIssue({ code: 'custom', path: ['delayMs'], message: 'Bina source delay must be at least 10000 ms' });
