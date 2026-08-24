@@ -1,7 +1,7 @@
 import type { Classification, ContactType } from './contracts';
 
 const professional = [/əmlakçı|daşınmaz əmlak|makler|mənzil satışı|kirayə/iu, /риелтор|маклер|недвижимост|продаж|аренд/iu, /real estate|realtor|property agent|house(?:s)? for sale|for rent/iu];
-const agency = /(?:\bagency\b|əmlak agentliyi|агентств)/iu;
+const agency = /(?:\bagency\b|\bagentlik\b|əmlak agentliyi|агентств)/iu;
 const locationDeal = /(?:baku|bakı|baki).*(?:satış|kirayə|продаж|аренд|sale|rent)|(?:satış|kirayə|продаж|аренд|sale|rent).*(?:baku|bakı|baki)/iu;
 const owner = /\bowner\b|владелец|собственник|sahib/iu;
 

@@ -24,4 +24,10 @@ describe('classifyEvidence', () => {
     expect(result.type).toBe('owner');
     expect(result.confidence).toBeLessThan(0.65);
   });
+
+  it('classifies the visible Bina Agentlik marker as an agency signal', () => {
+    const result = classifyEvidence({ text: 'Agentlik · Bakı Emlak · Bakı', occurrenceCount: 1 });
+    expect(result.type).toBe('agency');
+    expect(result.reasons).toContain('agency_name');
+  });
 });

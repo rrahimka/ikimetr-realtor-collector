@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import Database from 'better-sqlite3';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,5 +62,40 @@ describe('createDatabase', () => {
     expect(resolved).toBe(join(packageRoot, 'data', 'collector.db'));
     expect(resolved.includes(join('apps', 'web', 'data'))).toBe(false);
     expect(resolved.includes(join('apps', 'worker', 'data'))).toBe(false);
+  });
+
+  it('migrates the legacy runs status constraint without losing rows or foreign keys', () => {
+    const dbPath = join(makeTempDir(), 'legacy.db');
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, type TEXT NOT NULL,
+        locator TEXT NOT NULL, language TEXT NOT NULL, max_pages INTEGER NOT NULL,
+        max_depth INTEGER NOT NULL, delay_ms INTEGER NOT NULL, enabled INTEGER NOT NULL,
+        kill_switch INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed','cancelled')),
+        started_at TEXT, finished_at TEXT, pages_checked INTEGER NOT NULL DEFAULT 0,
+        phones_found INTEGER NOT NULL DEFAULT 0, unique_phones INTEGER NOT NULL DEFAULT 0,
+        error TEXT, cancellation_requested INTEGER NOT NULL DEFAULT 0,
+        needs_review INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX one_active_run_per_source ON runs(source_id) WHERE status IN ('queued','running');
+      INSERT INTO sources VALUES(1,'Legacy','website','https://fixture.invalid','AZ',1,0,0,1,0,'2026-08-24','2026-08-24');
+      INSERT INTO runs VALUES(7,1,'completed','2026-08-24','2026-08-24',3,2,1,NULL,0,0,'2026-08-24');
+    `);
+    legacy.close();
+
+    const migrated = createDatabase(dbPath);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(1);
+    expect(migrated.prepare('SELECT id,source_id,status,pages_checked FROM runs').all()).toEqual([
+      { id: 7, source_id: 1, status: 'completed', pages_checked: 3 },
+    ]);
+    expect((migrated.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='runs'").get() as { sql: string }).sql).toContain("'blocked'");
+    expect(migrated.pragma('foreign_key_check')).toEqual([]);
+    migrated.close();
   });
 });

@@ -2,7 +2,9 @@ import type { Classification, EvidenceInput, SourceInput } from '@ikimetr/core';
 import type { CollectorDatabase } from './client';
 
 const now = () => new Date().toISOString();
-type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'blocked';
+type RunCounters = { pagesChecked: number; phonesFound: number; uniquePhones: number };
+type BinaRunSummary = { outcomes: Record<string, number>; newContacts: number; duplicates: number; agenciesFound?: number };
 
 function mapSource(row: Record<string, unknown>) { return { id: row.id as number, name: row.name as string, type: row.type as SourceInput['type'], locator: row.locator as string, language: row.language as SourceInput['language'], maxPages: row.max_pages as number, maxDepth: row.max_depth as number, delayMs: row.delay_ms as number, enabled: Boolean(row.enabled), killSwitch: Boolean(row.kill_switch) }; }
 function mapRun(row: Record<string, unknown>) { return { id: row.id as number, sourceId: row.source_id as number, status: row.status as RunStatus, startedAt: row.started_at as string | null, finishedAt: row.finished_at as string | null, pagesChecked: row.pages_checked as number, phonesFound: row.phones_found as number, uniquePhones: row.unique_phones as number, error: row.error as string | null, cancellationRequested: Boolean(row.cancellation_requested), needsReview: Boolean(row.needs_review) }; }
@@ -11,7 +13,7 @@ function mapContact(row: Record<string, unknown>) { return { id: row.id as numbe
 export function createRepositories(db: CollectorDatabase) {
   const audit = {
     record(action: string, entityType: string, entityId: number, details: unknown) { db.prepare('INSERT INTO audit_events(action,entity_type,entity_id,details_json,created_at) VALUES(?,?,?,?,?)').run(action, entityType, entityId, JSON.stringify(details), now()); },
-    list() { return db.prepare('SELECT * FROM audit_events ORDER BY id').all() as Array<{ id: number; action: string }> },
+    list() { return (db.prepare('SELECT * FROM audit_events ORDER BY id').all() as Array<Record<string, unknown>>).map((row) => ({ id: row.id as number, action: row.action as string, entityType: row.entity_type as string, entityId: row.entity_id as number, details: JSON.parse(row.details_json as string) as unknown, createdAt: row.created_at as string })); },
   };
   const sources = {
     create(input: SourceInput) { const time = now(); const result = db.prepare('INSERT INTO sources(name,type,locator,language,max_pages,max_depth,delay_ms,enabled,kill_switch,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(input.name, input.type, input.locator, input.language, input.maxPages, input.maxDepth, input.delayMs, Number(input.enabled), Number(input.killSwitch), time, time); return this.get(Number(result.lastInsertRowid))!; },
@@ -29,10 +31,13 @@ export function createRepositories(db: CollectorDatabase) {
     enqueue(sourceId: number) { try { const result = db.prepare("INSERT INTO runs(source_id,status,pages_checked,phones_found,unique_phones,cancellation_requested,needs_review,created_at) VALUES(?,'queued',0,0,0,0,0,?)").run(sourceId, now()); return this.get(Number(result.lastInsertRowid))!; } catch (error) { if (String(error).includes('UNIQUE')) throw new Error('source already has an active run'); throw error; } },
     get(id: number) { const row = db.prepare('SELECT * FROM runs WHERE id=?').get(id) as Record<string, unknown> | undefined; return row ? mapRun(row) : undefined; },
     list() { return (db.prepare('SELECT * FROM runs ORDER BY id DESC').all() as Record<string, unknown>[]).map(mapRun); },
+    hasActive(sourceId: number) { return Boolean((db.prepare("SELECT 1 present FROM runs WHERE source_id=? AND status IN ('queued','running') LIMIT 1").get(sourceId) as { present: number } | undefined)?.present); },
+    latestTerminal(sourceId: number) { const row = db.prepare("SELECT * FROM runs WHERE source_id=? AND status NOT IN ('queued','running') ORDER BY COALESCE(finished_at,created_at) DESC,id DESC LIMIT 1").get(sourceId) as Record<string, unknown> | undefined; return row ? mapRun(row) : undefined; },
     claimNext() { const claim = db.transaction(() => { const row = db.prepare("SELECT id FROM runs WHERE status='queued' ORDER BY id LIMIT 1").get() as {id:number}|undefined; if (!row) return undefined; db.prepare("UPDATE runs SET status='running',started_at=? WHERE id=? AND status='queued'").run(now(), row.id); return this.get(row.id); }); return claim(); },
     requestCancellation(id: number) { db.prepare('UPDATE runs SET cancellation_requested=1 WHERE id=?').run(id); },
     shouldCancel(id: number) { return Boolean((db.prepare('SELECT cancellation_requested FROM runs WHERE id=?').get(id) as {cancellation_requested:number}|undefined)?.cancellation_requested); },
-    finish(id: number, status: Exclude<RunStatus, 'queued'|'running'>, counters = { pagesChecked: 0, phonesFound: 0, uniquePhones: 0 }, error?: string) { db.prepare('UPDATE runs SET status=?,finished_at=?,pages_checked=?,phones_found=?,unique_phones=?,error=? WHERE id=?').run(status,now(),counters.pagesChecked,counters.phonesFound,counters.uniquePhones,error ?? null,id); },
+    finish(id: number, status: Exclude<RunStatus, 'queued'|'running'>, counters: RunCounters = { pagesChecked: 0, phonesFound: 0, uniquePhones: 0 }, error?: string) { db.prepare('UPDATE runs SET status=?,finished_at=?,pages_checked=?,phones_found=?,unique_phones=?,error=? WHERE id=?').run(status,now(),counters.pagesChecked,counters.phonesFound,counters.uniquePhones,error ?? null,id); },
+    finishBina(id: number, status: 'completed' | 'blocked' | 'cancelled', counters: RunCounters, reason: string | undefined, summary: BinaRunSummary) { db.transaction(() => { this.finish(id, status, counters, reason); audit.record('run.bina.summary', 'run', id, summary); })(); return this.get(id)!; },
     recoverAbandoned() { return db.prepare("UPDATE runs SET status='failed',finished_at=?,needs_review=1,error=COALESCE(error,'Worker restarted during run') WHERE status='running'").run(now()).changes; },
   };
   const contacts = {
@@ -42,6 +47,9 @@ export function createRepositories(db: CollectorDatabase) {
     list(search='', filters: { type?: string | undefined; platform?: string | undefined; verificationStatus?: string | undefined; isForeign?: boolean | undefined } = {}) { const clauses: string[] = []; const params: unknown[] = []; if (search) { clauses.push("(normalized_phone LIKE ? OR COALESCE(name,'') LIKE ? OR COALESCE(agency,'') LIKE ?)"); params.push(`%${search}%`, `%${search}%`, `%${search}%`); } if (filters.type) { clauses.push('type = ?'); params.push(filters.type); } if (filters.platform) { clauses.push('platform = ?'); params.push(filters.platform); } if (filters.verificationStatus) { clauses.push('verification_status = ?'); params.push(filters.verificationStatus); } if (filters.isForeign !== undefined) { clauses.push('is_foreign = ?'); params.push(Number(filters.isForeign)); } const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : ''; const rows = db.prepare(`SELECT * FROM contacts${where} ORDER BY id DESC`).all(...params); return (rows as Record<string,unknown>[]).map(mapContact); },
     evidenceFor(phone: string) { return db.prepare('SELECT e.* FROM evidence e JOIN contacts c ON c.id=e.contact_id WHERE c.normalized_phone=? ORDER BY e.id').all(phone) as Array<Record<string,unknown>>; },
   };
+  const evidence = {
+    wasUrlSeenSince(sourceId: number, sourceUrl: string, since: string) { return Boolean((db.prepare('SELECT 1 present FROM evidence WHERE source_id=? AND source_url=? AND discovered_at>=? LIMIT 1').get(sourceId, sourceUrl, since) as { present: number } | undefined)?.present); },
+  };
   const reviews = {
     merge(targetId:number,sourceId:number,reason:string) { return db.transaction(() => { if (targetId===sourceId) throw new Error('cannot merge a contact into itself'); const result=db.prepare('INSERT INTO contact_merges(target_contact_id,source_contact_id,reason,merged_at) VALUES(?,?,?,?)').run(targetId,sourceId,reason,now()); db.prepare('UPDATE contacts SET merged_into_id=? WHERE id=?').run(targetId,sourceId); const id=Number(result.lastInsertRowid); audit.record('contact.merge','contact',sourceId,{targetId,reason}); return {id,targetId,sourceId}; })(); },
     undoMerge(id:number,reason:string) { return db.transaction(() => { const merge=db.prepare('SELECT * FROM contact_merges WHERE id=? AND undone_at IS NULL').get(id) as {source_contact_id:number}|undefined; if(!merge) throw new Error('active merge not found'); db.prepare('UPDATE contacts SET merged_into_id=NULL WHERE id=?').run(merge.source_contact_id); db.prepare('UPDATE contact_merges SET undone_at=?,undo_reason=? WHERE id=?').run(now(),reason,id); audit.record('contact.merge.undo','contact',merge.source_contact_id,{mergeId:id,reason}); })(); },
@@ -49,5 +57,5 @@ export function createRepositories(db: CollectorDatabase) {
     listMerges(){return db.prepare('SELECT * FROM contact_merges ORDER BY id DESC').all() as Array<Record<string,unknown>>;},
   };
   const dashboard={stats(){return{sources:(db.prepare('SELECT COUNT(*) count FROM sources').get() as {count:number}).count,runs:(db.prepare('SELECT COUNT(*) count FROM runs').get() as {count:number}).count,contacts:(db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL').get() as {count:number}).count,newContacts:(db.prepare("SELECT COUNT(*) count FROM contacts WHERE first_seen_at>=datetime('now','-1 day')").get() as {count:number}).count,errors:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status='failed'").get() as {count:number}).count,active:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status IN ('queued','running')").get() as {count:number}).count};}};
-  return { sources, keywords, runs, contacts, reviews, audit, dashboard };
+  return { sources, keywords, runs, contacts, evidence, reviews, audit, dashboard };
 }

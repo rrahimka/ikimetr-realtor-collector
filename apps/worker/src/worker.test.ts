@@ -11,10 +11,56 @@ describe('createConnectorRunner',()=>{
   it('blocks the artificial fixture with an empty environment',async()=>{const {source}=setup();await expect(createConnectorRunner({})(source)).rejects.toThrow('Test connector is disabled outside tests');});
   it('blocks the artificial fixture when it is explicitly disabled',async()=>{const {source}=setup();await expect(createConnectorRunner({ALLOW_TEST_CONNECTOR:'false'})(source)).rejects.toThrow('Test connector is disabled outside tests');});
   it('produces only the artificial normalized fixture contact without network access',async()=>{const {repos,run}=setup();const fetchSpy=vi.spyOn(globalThis,'fetch').mockRejectedValue(new Error('network access is forbidden'));await runWorkerOnce(repos,createConnectorRunner({ALLOW_TEST_CONNECTOR:'true'}));expect(repos.runs.get(run.id)).toMatchObject({status:'completed',pagesChecked:1,phonesFound:1,uniquePhones:1});expect(repos.contacts.list()).toEqual([expect.objectContaining({normalizedPhone:'+994501234567',name:'Aysel Məmmədova',platform:'fixture'})]);expect(fetchSpy).not.toHaveBeenCalled();});
+
+  it('passes hard-limited Bina options and live stop guards to the dedicated runner',async()=>{
+    db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:100,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});
+    let captured: Record<string, unknown> | undefined;
+    const runner=createConnectorRunner({BINA_ENABLED:'true',BINA_PERMISSION_CONFIRMED:'true'}, {runBina:async(options)=>{captured=options as unknown as Record<string,unknown>;return{items:[],pagesChecked:0,estimatedItems:0,outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:0,parse_error:0,cancelled:0}};}});
+    await runner(source,{shouldStop:()=>false});
+    expect(captured).toMatchObject({startUrl:'https://bina.az/search',maxListings:100,delayMs:10000});
+    expect(await (captured?.permission as ()=>Promise<boolean>)()).toBe(true);
+    expect(await (captured?.shouldStop as ()=>Promise<false>)()).toBe(false);
+  });
+
+  it('does not launch Bina when either permission flag is disabled',async()=>{
+    db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:5,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});
+    const runBina=vi.fn();
+    const result=await createConnectorRunner({BINA_ENABLED:'true',BINA_PERMISSION_CONFIRMED:'false'},{runBina})(source,{shouldStop:()=>false});
+    expect(runBina).not.toHaveBeenCalled();
+    expect(result).toMatchObject({stopReason:'permission_disabled',outcomes:{blocked:1}});
+  });
 });
 
 describe('worker',()=>{
   it('processes connector evidence into a classified normalized contact',async()=>{const {repos,run}=setup();await runWorkerOnce(repos,()=>Promise.resolve({pagesChecked:1,estimatedItems:1,items:[{sourceUrl:'https://fixture.invalid/page',locationType:'listing',excerpt:'Bakı əmlakçı 050 123 45 67, çoxlu mənzil satışı',rawPhone:'050 123 45 67',platform:'fixture',fingerprint:'worker-fingerprint-1'}]}));expect(repos.runs.get(run.id)).toMatchObject({status:'completed',pagesChecked:1,phonesFound:1,uniquePhones:1});expect(repos.contacts.list()[0]).toMatchObject({normalizedPhone:'+994501234567',type:'agent'});});
   it('stops a run before writes when cancellation is requested',async()=>{const {repos,run}=setup();repos.runs.requestCancellation(run.id);await runWorkerOnce(repos,()=>Promise.resolve({pagesChecked:1,estimatedItems:1,items:[{sourceUrl:'https://fixture.invalid/page',locationType:'listing',excerpt:'Makler 050 123 45 67',rawPhone:'050 123 45 67',platform:'fixture',fingerprint:'worker-fingerprint-2'}]}));expect(repos.runs.get(run.id)?.status).toBe('cancelled');expect(repos.contacts.list()).toHaveLength(0);});
   it('records one connector failure without throwing from the polling loop',async()=>{const {repos,run}=setup();await expect(runWorkerOnce(repos,()=>Promise.reject(new Error('source blocked')))).resolves.toBe(true);expect(repos.runs.get(run.id)).toMatchObject({status:'failed',error:'source blocked'});});
+
+  it('stores a protected Bina stop as blocked with a safe audit summary',async()=>{
+    db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:5,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});const run=repos.runs.enqueue(source.id);
+    await runWorkerOnce(repos,()=>Promise.resolve({items:[],pagesChecked:0,estimatedItems:0,stopReason:'captcha',outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:1,parse_error:0,cancelled:0}}));
+    expect(repos.runs.get(run.id)).toMatchObject({status:'blocked',error:'captcha'});
+    expect(repos.audit.list()).toContainEqual(expect.objectContaining({action:'run.bina.summary',details:expect.objectContaining({outcomes:expect.objectContaining({blocked:1})})}));
+  });
+
+  it('deduplicates a Bina phone, preserves verification, and stores evidence per listing',async()=>{
+    db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:5,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});
+    const item=(id:number)=>({sourceUrl:`https://bina.az/items/${id}`,locationType:'listing' as const,excerpt:'Agentlik · Bakı Emlak',rawPhone:'+994501234567',name:'Aysel',agency:'Bakı Emlak',platform:'bina.az',fingerprint:`bina-evidence-${id}`});
+    const result=(id:number)=>({items:[item(id)],pagesChecked:1,estimatedItems:1,outcomes:{accepted:1,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:0,parse_error:0,cancelled:0}});
+    const first=repos.runs.enqueue(source.id);await runWorkerOnce(repos,()=>Promise.resolve(result(1)));const contact=repos.contacts.list()[0]!;repos.reviews.setStatus(contact.id,'verified');
+    const second=repos.runs.enqueue(source.id);await runWorkerOnce(repos,()=>Promise.resolve(result(2)));
+    expect(repos.contacts.list()).toHaveLength(1);
+    expect(repos.contacts.get(contact.id)?.verificationStatus).toBe('verified');
+    expect(repos.contacts.evidenceFor('+994501234567')).toHaveLength(2);
+    expect(repos.runs.get(first.id)?.status).toBe('completed');
+    expect(repos.runs.get(second.id)?.status).toBe('completed');
+    expect(repos.audit.list().filter((event)=>event.action==='run.bina.summary').at(-1)).toMatchObject({details:expect.objectContaining({newContacts:0,duplicates:1,agenciesFound:1})});
+  });
+
+  it('redacts an unexpected Bina connector error before persistence',async()=>{
+    db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:5,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});const run=repos.runs.enqueue(source.id);
+    await runWorkerOnce(repos,()=>Promise.reject(new Error('remote failure for +994501234567')));
+    expect(repos.runs.get(run.id)).toMatchObject({status:'failed',error:'Bina connector failed'});
+    expect(repos.runs.get(run.id)?.error).not.toContain('+994501234567');
+  });
 });

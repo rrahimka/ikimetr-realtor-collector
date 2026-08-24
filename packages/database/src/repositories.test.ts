@@ -30,6 +30,53 @@ describe('repositories', () => {
     expect(repos.contacts.evidenceFor('+994501234567')).toHaveLength(1);
   });
 
+  it('preserves a manual verified status while adding evidence from another listing', () => {
+    const repos = setup(); const saved = repos.sources.create(source);
+    const classification = { type: 'agent' as const, confidence: 0.8, reasons: ['professional_keywords'], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-25T00:00:00.000Z' };
+    const first = repos.contacts.persistEvidence({ normalizedPhone: '+994501234567', isForeign: false, evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/a', locationType: 'listing', excerpt: 'Agent', rawPhone: '0501234567', platform: 'bina.az', fingerprint: 'verified-evidence-01' }, classification });
+    repos.reviews.setStatus(first.id, 'verified');
+    repos.contacts.persistEvidence({ normalizedPhone: '+994501234567', isForeign: false, evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/b', locationType: 'listing', excerpt: 'Agentlik', rawPhone: '+994501234567', platform: 'bina.az', fingerprint: 'verified-evidence-02' }, classification });
+
+    expect(repos.contacts.get(first.id)?.verificationStatus).toBe('verified');
+    expect(repos.contacts.evidenceFor('+994501234567')).toHaveLength(2);
+  });
+
+  it('finishes a blocked Bina run with a safe reason and audit summary', () => {
+    const repos = setup();
+    const saved = repos.sources.create({ ...source, type: 'bina_agency', locator: 'https://bina.az/search', maxDepth: 0, delayMs: 10_000 });
+    const run = repos.runs.enqueue(saved.id);
+    repos.runs.claimNext();
+    repos.runs.finishBina(run.id, 'blocked', { pagesChecked: 2, phonesFound: 1, uniquePhones: 1 }, 'captcha', {
+      outcomes: { accepted: 1, duplicate: 0, private_seller: 1, missing_phone: 0, invalid_phone: 0, page_removed: 0, blocked: 1, parse_error: 0, cancelled: 0 },
+      newContacts: 1,
+      duplicates: 0,
+    });
+
+    expect(repos.runs.get(run.id)).toMatchObject({ status: 'blocked', error: 'captcha', pagesChecked: 2 });
+    expect(repos.audit.list()).toContainEqual(expect.objectContaining({
+      action: 'run.bina.summary',
+      entityType: 'run',
+      entityId: run.id,
+      details: expect.objectContaining({ newContacts: 1, outcomes: expect.objectContaining({ blocked: 1 }) }),
+    }));
+  });
+
+  it('queries active/latest runs and recent listing evidence from SQLite', () => {
+    const repos = setup();
+    const saved = repos.sources.create({ ...source, type: 'bina_agency', locator: 'https://bina.az/search', maxDepth: 0, delayMs: 10_000 });
+    const firstRun = repos.runs.enqueue(saved.id);
+    expect(repos.runs.hasActive(saved.id)).toBe(true);
+    repos.runs.claimNext();
+    repos.runs.finish(firstRun.id, 'completed');
+    expect(repos.runs.hasActive(saved.id)).toBe(false);
+    expect(repos.runs.latestTerminal(saved.id)?.id).toBe(firstRun.id);
+
+    const classification = { type: 'agency' as const, confidence: 0.9, reasons: ['agency_name'], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-25T00:00:00.000Z' };
+    repos.contacts.persistEvidence({ normalizedPhone: '+994501234567', isForeign: false, evidence: { sourceId: saved.id, sourceUrl: 'https://bina.az/items/123', locationType: 'listing', excerpt: 'Agentlik', rawPhone: '+994501234567', platform: 'bina.az', fingerprint: 'recent-url-evidence' }, classification });
+    expect(repos.evidence.wasUrlSeenSince(saved.id, 'https://bina.az/items/123', '2020-01-01T00:00:00.000Z')).toBe(true);
+    expect(repos.evidence.wasUrlSeenSince(saved.id, 'https://bina.az/items/123', '2100-01-01T00:00:00.000Z')).toBe(false);
+  });
+
   it('enforces one active run, supports cancellation, and recovers abandoned work', () => {
     const repos = setup(); const saved = repos.sources.create(source);
     const run = repos.runs.enqueue(saved.id);

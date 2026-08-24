@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS keywords (
 );
 CREATE TABLE IF NOT EXISTS runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
-  status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed','cancelled')),
+  status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed','cancelled','blocked')),
   started_at TEXT, finished_at TEXT, pages_checked INTEGER NOT NULL DEFAULT 0,
   phones_found INTEGER NOT NULL DEFAULT 0, unique_phones INTEGER NOT NULL DEFAULT 0,
   error TEXT, cancellation_requested INTEGER NOT NULL DEFAULT 0, needs_review INTEGER NOT NULL DEFAULT 0,
