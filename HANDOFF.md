@@ -1,38 +1,49 @@
-# Handoff — 2026-08-14 checkpoint (RU/AZ + CSV)
+# Handoff — 2026-08-24 checkpoint (local `pnpm dev` fix)
 
 ## Repository state
 
 - Path: `/mnt/c/Users/9305r/Desktop/ikimetr-realtor-collector`
 - Branch: `safety/qwen-collector-2026-08-12` (pushed to `origin/safety/qwen-collector-2026-08-12`)
-- Working tree clean at previous HEAD `335f31e`.
 
 ## Environment (WSL Ubuntu)
 
 - Node `v24.19.0` (nvm: `export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh"`).
 - pnpm `11.21.0`.
 
+## What this milestone fixes
+
+Manual `pnpm dev` used to crash the worker with
+`TypeError: Cannot open database because the directory does not exist`,
+because a relative `DATABASE_URL` (`./data/collector.db`) resolved against each
+process's own `process.cwd()` (migrate/seed → `packages/database`, worker →
+`apps/worker`, web → `apps/web`), so they looked at different databases, and
+the root `.env` was never loaded by the `concurrently` dev script.
+
+- `packages/database/src/client.ts` now exports `resolveDatabasePath()`: `:memory:`
+  and absolute paths pass through; relative paths resolve against the database
+  package directory (never `cwd`). `createDatabase()` also creates the parent
+  directory and applies the same resolver, so migrate/seed/web/worker all open
+  one shared database.
+- New root launcher `scripts/dev.mjs` loads the root `.env` (without overriding
+  already-set variables) and then runs `concurrently` for web + worker. The root
+  `dev` script is now `node scripts/dev.mjs`, so `pnpm dev` works with no manual
+  `source .env` / `export`.
+- `apps/web/src/lib/db.ts`, `packages/database/src/migrate.ts` and `seed.ts`
+  were simplified to use the single resolver.
+
 ## Verified (all exit 0)
 
-- `pnpm test` — unit/integration (incl. new i18n + CSV tests).
+- `pnpm test` — 66 passed (14 files, incl. new `client.test.ts` and `scripts/dev.test.mjs`).
 - `pnpm typecheck` — 5 packages.
 - `pnpm lint` — no errors/warnings.
 - `pnpm build` — next build + worker tsc.
-- `pnpm test:smoke` — 2 passed (collector pipeline; language toggle + CSV import).
+- `pnpm test:smoke` — 2 passed.
+- `git diff --check` — clean.
 
-## What this milestone adds
-
-- RU/AZ localisation: `apps/web/src/lib/i18n.ts` (central dictionary) +
-  `lib/lang.ts` (`getLang` via cookie) + `components/lang-switcher.tsx`
-  (client-side cookie set + reload). All main pages/actions translated; enum
-  labels localised; RU fallback.
-- Contacts CSV import/export: `lib/csv.ts` parser + formula-injection-safe
-  export, `lib/csv-import.ts` (accepted/rejected/duplicates report),
-  `api/import/contacts/route.ts` (POST, 5 MB limit, auth+CSRF),
-  `components/contacts-import.tsx` (upload UI + report + template download).
-- Session cookie `SameSite` changed to `lax` for redirect compatibility
-  (still HttpOnly, path `/`, 1-day TTL); CSRF cookie unchanged.
+A controlled `pnpm dev` run confirmed web reports `Ready` on `127.0.0.1:3000`,
+worker reports `Worker started` with no SQLite error, login uses
+`LOCAL_AUTH_PASSWORD`, and both processes shut down cleanly on SIGINT/SIGTERM.
 
 ## Next task
 
-None required for the local MVP. Optional: deeper AZ coverage for review/source
-forms, and a documented clean-demo script against a throwaway DB.
+None required. Optional: document a clean-demo script against a throwaway DB.

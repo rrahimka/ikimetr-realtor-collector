@@ -31,7 +31,7 @@ cd /mnt/c/Users/9305r/Desktop/ikimetr-realtor-collector
 ## Install
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ## Environment
@@ -48,23 +48,30 @@ LOCAL_AUTH_PASSWORD=<strong local password>
 SESSION_SECRET=<random secret, at least 16 characters>
 ```
 
+`pnpm dev` loads the root `.env` automatically — no need to `source .env` or
+`export` variables beforehand. A relative `DATABASE_URL` resolves against
+`packages/database`, so web, worker, migrate and seed all open the same file
+(`packages/database/data/collector.db`); use an absolute path to override it.
+
 Optional social collection (disabled in this MVP): `APIFY_TOKEN`,
 `INSTAGRAM_ENABLED`, `TIKTOK_ENABLED` and related actor IDs.
 
 ## Prepare the database
 
 ```bash
-pnpm db:migrate   # creates data/collector.db and applies the schema
+pnpm db:migrate   # creates packages/database/data/collector.db and applies the schema
 pnpm db:seed      # optional: seeds demo keywords and a fixture source
 ```
 
 ## Run
 
+From the repository root (no prior `source .env` / `export` needed):
+
 ```bash
 pnpm dev
 ```
 
-This starts both services via `concurrently`:
+This loads the root `.env` and starts both services:
 
 - Web panel: `http://127.0.0.1:3000`
 - Worker: polls the queue and processes runs.
@@ -75,7 +82,8 @@ Open `http://127.0.0.1:3000`, enter the password from `LOCAL_AUTH_PASSWORD`.
 
 ## Demo scenario
 
-1. `pnpm install`, set `.env`, `pnpm db:migrate`, `pnpm db:seed`.
+1. `pnpm install --frozen-lockfile`, `cp .env.example .env`,
+   `pnpm db:migrate`, `pnpm db:seed`.
 2. `pnpm dev`, log in.
 3. On **Sources**, create a `test_fixture` source with locator
    `fixture://contacts` (or reuse the seeded one) and enqueue a run.

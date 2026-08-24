@@ -15,7 +15,7 @@ export function seedDemoData(db: ReturnType<typeof createDatabase>): { keywords:
 }
 
 if (process.argv[1]?.endsWith('seed.ts')) {
-  const db = createDatabase(process.env.DATABASE_URL ?? './data/collector.db');
+  const db = createDatabase();
   const result = seedDemoData(db);
   db.close();
   console.log(`Seeded ${result.keywords} keywords; fixture source ${result.sourceCreated ? 'created' : 'already present'}`);

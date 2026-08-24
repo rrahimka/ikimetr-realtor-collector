@@ -1,8 +1,5 @@
-import { mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { createDatabase } from './client';
+import { createDatabase, DEFAULT_DATABASE_PATH, resolveDatabasePath } from './client';
 
-const path = resolve(process.env.DATABASE_URL ?? './data/collector.db');
-mkdirSync(dirname(path), { recursive: true });
+const path = resolveDatabasePath(process.env.DATABASE_URL ?? DEFAULT_DATABASE_PATH);
 createDatabase(path).close();
 console.log(`Migrated ${path}`);

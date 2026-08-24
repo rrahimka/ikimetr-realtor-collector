@@ -9,7 +9,7 @@
     "build": "pnpm -r --if-present build",
     "db:migrate": "pnpm --filter @ikimetr/database db:migrate",
     "db:seed": "pnpm --filter @ikimetr/database db:seed",
-    "dev": "concurrently -k -n web,worker -c cyan,magenta \"pnpm --filter @ikimetr/web dev\" \"pnpm --filter @ikimetr/worker dev\"",
+    "dev": "node scripts/dev.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:smoke": "pnpm --filter @ikimetr/web test:smoke",
