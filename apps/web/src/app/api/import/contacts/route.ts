@@ -9,7 +9,7 @@ const MAX_BYTES = 5_000_000;
 export async function GET() {
   try {
     await requireApi();
-    return new Response(CONTACTS_CSV_TEMPLATE, { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="contacts-template.csv"' } });
+    return new Response(CONTACTS_CSV_TEMPLATE, { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="template.csv"' } });
   } catch (e) { return apiError(e); }
 }
 

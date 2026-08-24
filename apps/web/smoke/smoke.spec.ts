@@ -67,6 +67,10 @@ test('collector pipeline: login → fixture source → run → worker → contac
   await page.goto('/');
   await expect(page).toHaveURL(/\/login/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Realtor Collector');
+  await page.fill('input[name="password"]', 'wrong-password');
+  await page.getByRole('button', { name: 'Войти' }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await expect(page.getByText('Неверный пароль или не настроен env')).toBeVisible();
   await page.fill('input[name="password"]', 'smoke-test-password');
   await page.getByRole('button', { name: 'Войти' }).click();
   try {
@@ -78,7 +82,7 @@ test('collector pipeline: login → fixture source → run → worker → contac
     await page.getByRole('button', { name: 'Войти' }).click();
     await expect(page).toHaveURL('/');
   }
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dashboard');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');
 
   // 2. Create the test_fixture source through the authenticated API.
   //    test_fixture is intentionally not exposed by the production SourceForm,
@@ -154,11 +158,35 @@ test('collector pipeline: login → fixture source → run → worker → contac
   await expect(page.getByText('+994501234567').first()).toBeVisible();
   await expect(page.getByText('Aysel Məmmədova').first()).toBeVisible();
   await expect(page.getByText('Bakı Emlak').first()).toBeVisible();
+  await expect(page.getByText('Профессиональные ключевые слова').first()).toBeVisible();
+  await expect(page.getByText('Локация и сделка').first()).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('professional_keywords');
+  await expect(page.locator('body')).not.toContainText('location_and_transaction');
+
+  await page.fill('input[name="q"]', '+994501234567');
+  await page.getByRole('button', { name: 'Поиск' }).click();
+  await expect(page.getByText('Aysel Məmmədova').first()).toBeVisible();
+
+  await page.getByRole('link', { name: 'Aysel Məmmədova' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Платформа' })).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('DETAIL.COLPLATFORM');
+  await expect(page.locator('body')).not.toContainText('professional_keywords');
+  await expect(page.getByText(/^\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}$/).first()).toBeVisible();
+
+  await page.goto('/review');
+  const reviewResponsePromise = page.waitForResponse((response) => response.url().endsWith('/api/review/status'));
+  const verifyButton = page.getByRole('button', { name: 'Подтвердить риелтора' }).first();
+  await verifyButton.click();
+  expect((await reviewResponsePromise).status()).toBe(200);
+  await expect(verifyButton).toHaveCount(0);
+  await page.goto('/contacts');
+  await expect(page.getByRole('cell', { name: 'подтверждено' })).toBeVisible();
 
   // 8. CSV export through the normal UI download path.
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('link', { name: 'CSV экспорт' }).click();
+  await page.getByRole('link', { name: 'Экспортировать список' }).click();
   const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('contacts.csv');
   const csvPath = await download.path();
   if (!csvPath) throw new Error('CSV download path is unavailable');
   const csv = readFileSync(csvPath, 'utf8');
@@ -173,17 +201,34 @@ test('language toggle and CSV import report', async ({ page }) => {
   await page.getByRole('button', { name: 'Войти' }).click();
   await expect(page).toHaveURL('/');
 
-  // Switch to Azerbaijani, verify the dashboard and nav, then switch back.
+  // Switch to Azerbaijani, verify persistence after reload, then switch back.
   await page.getByRole('button', { name: 'AZ' }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Panel');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('İdarəetmə paneli');
   await expect(page.getByRole('link', { name: 'Əlaqələr' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('İdarəetmə paneli');
   await page.getByRole('button', { name: 'RU' }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dashboard');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');
 
-  // Import a contacts CSV and verify accepted + idempotent duplicate report.
+  // Reject an invalid CSV with a localised error.
   await page.goto('/contacts');
-  const csvText = 'phone,name,agency,platform\n050 999 88 77,Fixture Importer,Test Agentliyi,website\n';
-  const file = { name: 'contacts.csv', mimeType: 'text/csv', buffer: Buffer.from(csvText, 'utf8') };
+  const invalidFile = { name: 'invalid.csv', mimeType: 'text/csv', buffer: Buffer.from('name\nMissing Phone\n', 'utf8') };
+  await page.setInputFiles('input[type="file"]', invalidFile);
+  await page.getByRole('button', { name: 'Импортировать' }).click();
+  await expect(page.getByText('Отсутствует обязательный столбец: phone')).toBeVisible();
+
+  // Download template.csv, use its schema for an import, then verify idempotent duplicate reporting.
+  const templateDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Скачать шаблон импорта' }).click();
+  const templateDownload = await templateDownloadPromise;
+  expect(templateDownload.suggestedFilename()).toBe('template.csv');
+  const templatePath = await templateDownload.path();
+  if (!templatePath) throw new Error('template download path is unavailable');
+  const template = readFileSync(templatePath, 'utf8').trim();
+  const csvText = `${template}\n050 999 88 77,Fixture Importer,Test Agentliyi,,website,https://fixture.invalid/import,listing,Fixture evidence\n`;
+  const file = { name: 'template.csv', mimeType: 'text/csv', buffer: Buffer.from(csvText, 'utf8') };
   await page.setInputFiles('input[type="file"]', file);
   await page.getByRole('button', { name: 'Импортировать' }).click();
   await expect(page.getByText('Принято')).toBeVisible();

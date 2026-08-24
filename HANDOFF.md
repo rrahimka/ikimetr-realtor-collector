@@ -1,6 +1,14 @@
-# Handoff — 2026-08-24 checkpoint (explicit local fixture opt-in)
+# Handoff — 2026-08-24 checkpoint (RU/AZ polish)
 
 ## Current fix
+
+- Completed the remaining RU/AZ UI localisation in the existing central dictionary, including navigation, page headings, classification reasons, CSV validation messages, and distinct export/import-template copy.
+- Contact, evidence, and run timestamps now use one server-side formatter with the `Asia/Baku` time zone and deterministic `DD.MM.YYYY, HH:mm` output.
+- The contact import template downloads as `template.csv`; `contacts.csv` remains the export report and the CSV schema/API are unchanged.
+- The smoke flow now checks rejected/accepted login, RU/AZ persistence after reload, fixture deduplication and evidence, contact filtering, review verification, export, localised invalid-CSV handling, and template-based idempotent import.
+- Controlled smoke on a fresh temporary SQLite database passed 2 tests with external HTTP and WebSocket requests blocked.
+
+## Previous checkpoint: explicit local fixture opt-in
 
 - Branch: `safety/qwen-collector-2026-08-12`.
 - `test_fixture` is now gated solely by the explicit
