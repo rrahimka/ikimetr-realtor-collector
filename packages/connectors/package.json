@@ -3,14 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "test": "vitest run --root ../.. packages/connectors/src", "typecheck": "tsc --noEmit" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. packages/connectors/src",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@ikimetr/core": "workspace:*",
     "apify-client": "^2.22.1",
     "cheerio": "^1.1.2",
     "csv-parse": "^6.1.0",
-    "domelementtype": "^2.3.0"
+    "domelementtype": "^2.3.0",
+    "playwright": "^1.62.1"
   },
-  "devDependencies": { "vitest": "^4.1.10" }
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  }
 }
