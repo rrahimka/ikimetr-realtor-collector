@@ -99,12 +99,13 @@ export function startBinaScheduler(options: {
     stopped = true;
     if (timer !== undefined) clock.clearTimeout(timer);
   };
-  const tick = async () => {
+  const tick = () => {
     if (stopped || options.signal.aborted) return;
     runSchedulerTick(options.repos, options.env, clock.now());
-    if (!stopped && !options.signal.aborted) timer = clock.setTimeout(() => { void tick(); }, CHECK_INTERVAL_MS);
+    if (!stopped && !options.signal.aborted) timer = clock.setTimeout(tick, CHECK_INTERVAL_MS);
   };
   options.signal.addEventListener('abort', stop, { once: true });
-  const firstTick = tick();
+  tick();
+  const firstTick = Promise.resolve();
   return { firstTick, stop };
 }

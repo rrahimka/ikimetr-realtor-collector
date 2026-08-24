@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+/** @type {string[]} */
 const tempDirs = [];
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -14,6 +15,7 @@ function makeProjectTempDir() {
   return dir;
 }
 
+/** @param {string} path @param {number} [timeoutMs] @returns {Promise<void>} */
 function waitForFile(path, timeoutMs = 5_000) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -26,10 +28,14 @@ function waitForFile(path, timeoutMs = 5_000) {
   });
 }
 
+/** @param {string} path */
 function toWindowsPath(path) {
   const match = /^\/mnt\/([a-z])\/(.*)$/iu.exec(path);
   if (!match) throw new Error(`Cannot convert WSL path: ${path}`);
-  return `${match[1].toUpperCase()}:\\${match[2].replaceAll('/', '\\')}`;
+  const drive = match[1];
+  const rest = match[2];
+  if (!drive || rest === undefined) throw new Error(`Cannot convert WSL path: ${path}`);
+  return `${drive.toUpperCase()}:\\${rest.replaceAll('/', '\\')}`;
 }
 
 describe('scripts/autostart.sh', () => {
@@ -59,6 +65,7 @@ describe('scripts/autostart.sh', () => {
     const second = spawnSync('bash', ['scripts/autostart.sh'], { cwd: process.cwd(), env, encoding: 'utf8' });
     expect(second.status).toBe(75);
     writeFileSync(release, 'release');
+    /** @type {number | null} */
     const firstResult = await new Promise((resolve) => first.once('close', (code) => resolve(code)));
     expect(firstResult).toBe(0);
     expect(statSync(join(state, 'collector.log.1')).size).toBe(5_000_001);

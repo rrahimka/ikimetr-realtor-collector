@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLocalSupervisor, loadEnvFile } from './start-local.mjs';
 
+/** @type {string[]} */
 const tempDirs = [];
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -17,20 +18,24 @@ function makeTempDir() {
 }
 
 class FakeChild extends EventEmitter {
+  /** @param {number} pid */
   constructor(pid) {
     super();
     this.pid = pid;
     this.exitCode = null;
     this.signalCode = null;
+    /** @type {NodeJS.Signals[]} */
     this.kills = [];
   }
 
+  /** @param {NodeJS.Signals} signal */
   kill(signal) {
     this.kills.push(signal);
     queueMicrotask(() => this.finish(0, signal));
     return true;
   }
 
+  /** @param {number} code @param {NodeJS.Signals | null} [signal] */
   finish(code, signal = null) {
     if (this.exitCode !== null || this.signalCode !== null) return;
     this.exitCode = code;
@@ -40,8 +45,15 @@ class FakeChild extends EventEmitter {
 }
 
 function setupSupervisor() {
+  /** @type {Array<{ command: string, args: string[], options: { cwd: string, env: NodeJS.ProcessEnv, stdio: 'inherit' } }>} */
   const calls = [];
+  /** @type {FakeChild[]} */
   const children = [];
+  /**
+   * @param {string} command
+   * @param {string[]} args
+   * @param {{ cwd: string, env: NodeJS.ProcessEnv, stdio: 'inherit' }} options
+   */
   const spawnImpl = (command, args, options) => {
     const child = new FakeChild(10_000 + children.length);
     calls.push({ command, args, options });
@@ -56,6 +68,7 @@ describe('loadEnvFile', () => {
   it('loads root values without overriding the existing environment', () => {
     const file = join(makeTempDir(), '.env');
     writeFileSync(file, 'EXISTING=from-file\nBINA_ENABLED=true\n');
+    /** @type {Record<string, string | undefined>} */
     const target = { EXISTING: 'from-process' };
     const result = loadEnvFile(file, target);
     expect(result.loaded).toBe(true);
@@ -88,7 +101,7 @@ describe('createLocalSupervisor', () => {
     expect(children[0].kills).toEqual(['SIGTERM']);
   });
 
-  it.each(['SIGINT', 'SIGTERM'])('forwards %s to both children and shuts down cleanly', async (signal) => {
+  it.each(/** @type {NodeJS.Signals[]} */ (['SIGINT', 'SIGTERM']))('forwards %s to both children and shuts down cleanly', async (signal) => {
     const { children, supervisor } = setupSupervisor();
     supervisor.forwardSignal(signal);
     expect(await supervisor.done).toBe(0);

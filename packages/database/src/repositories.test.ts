@@ -53,12 +53,17 @@ describe('repositories', () => {
     });
 
     expect(repos.runs.get(run.id)).toMatchObject({ status: 'blocked', error: 'captcha', pagesChecked: 2 });
-    expect(repos.audit.list()).toContainEqual(expect.objectContaining({
+    const summary = repos.audit.list().find((event) => event.action === 'run.bina.summary');
+    expect(summary).toMatchObject({
       action: 'run.bina.summary',
       entityType: 'run',
       entityId: run.id,
-      details: expect.objectContaining({ newContacts: 1, outcomes: expect.objectContaining({ blocked: 1 }) }),
-    }));
+    });
+    if (!summary?.details || typeof summary.details !== 'object') throw new Error('Bina summary details missing');
+    const details = summary.details as Record<string, unknown>;
+    if (!details.outcomes || typeof details.outcomes !== 'object') throw new Error('Bina outcomes missing');
+    expect(details.newContacts).toBe(1);
+    expect((details.outcomes as Record<string, unknown>).blocked).toBe(1);
   });
 
   it('queries active/latest runs and recent listing evidence from SQLite', () => {

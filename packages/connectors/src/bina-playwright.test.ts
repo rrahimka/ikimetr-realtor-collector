@@ -46,7 +46,7 @@ async function runWithFixture(fixture: Fixture, overrides: Partial<BinaConnector
     delayMs: 10_000,
     permission: () => true,
     shouldStop: () => false,
-    sleep: async () => undefined,
+    sleep: () => Promise.resolve(),
     launch,
     configurePage: async (page: Page) => {
       await page.route('https://bina.az/**', fixture);
@@ -129,7 +129,7 @@ describe('runBinaAgencyConnector', () => {
         activeDocuments -= 1;
       }
       await route.fulfill({ status: 200, contentType: 'text/html', body: path.startsWith('/items/') ? agencyHtml() : searchHtml([1, 2, 3]) });
-    }, { maxListings: 2, sleep: async (ms) => { sleeps.push(ms); } });
+    }, { maxListings: 2, sleep: (ms) => { sleeps.push(ms); return Promise.resolve(); } });
 
     expect(result.pagesChecked).toBe(2);
     expect(navigationOrder).toEqual(['/items/1', '/items/2']);
@@ -259,7 +259,7 @@ describe('runBinaAgencyConnector', () => {
         browser = await chromium.launch({ headless: true });
         return browser;
       },
-      configurePage: async () => { throw new Error('fixture setup failed'); },
+      configurePage: () => Promise.reject(new Error('fixture setup failed')),
     })).rejects.toThrow('fixture setup failed');
 
     expect(browser?.isConnected()).toBe(false);

@@ -15,7 +15,7 @@ describe('createConnectorRunner',()=>{
   it('passes hard-limited Bina options and live stop guards to the dedicated runner',async()=>{
     db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:100,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});
     let captured: Record<string, unknown> | undefined;
-    const runner=createConnectorRunner({BINA_ENABLED:'true',BINA_PERMISSION_CONFIRMED:'true'}, {runBina:async(options)=>{captured=options as unknown as Record<string,unknown>;return{items:[],pagesChecked:0,estimatedItems:0,outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:0,parse_error:0,cancelled:0}};}});
+    const runner=createConnectorRunner({BINA_ENABLED:'true',BINA_PERMISSION_CONFIRMED:'true'}, {runBina:(options)=>{captured=options as unknown as Record<string,unknown>;return Promise.resolve({items:[],pagesChecked:0,estimatedItems:0,outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:0,parse_error:0,cancelled:0}});}});
     await runner(source,{shouldStop:()=>false});
     expect(captured).toMatchObject({startUrl:'https://bina.az/search',maxListings:100,delayMs:10000});
     expect(await (captured?.permission as ()=>Promise<boolean>)()).toBe(true);
@@ -40,7 +40,12 @@ describe('worker',()=>{
     db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:5,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});const run=repos.runs.enqueue(source.id);
     await runWorkerOnce(repos,()=>Promise.resolve({items:[],pagesChecked:0,estimatedItems:0,stopReason:'captcha',outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:1,parse_error:0,cancelled:0}}));
     expect(repos.runs.get(run.id)).toMatchObject({status:'blocked',error:'captcha'});
-    expect(repos.audit.list()).toContainEqual(expect.objectContaining({action:'run.bina.summary',details:expect.objectContaining({outcomes:expect.objectContaining({blocked:1})})}));
+    const summary=repos.audit.list().find((event)=>event.action==='run.bina.summary');
+    expect(summary).toMatchObject({action:'run.bina.summary'});
+    if (!summary?.details || typeof summary.details !== 'object') throw new Error('Bina summary details missing');
+    const details=summary.details as Record<string,unknown>;
+    if (!details.outcomes || typeof details.outcomes !== 'object') throw new Error('Bina outcomes missing');
+    expect((details.outcomes as Record<string,unknown>).blocked).toBe(1);
   });
 
   it('deduplicates a Bina phone, preserves verification, and stores evidence per listing',async()=>{
@@ -54,7 +59,8 @@ describe('worker',()=>{
     expect(repos.contacts.evidenceFor('+994501234567')).toHaveLength(2);
     expect(repos.runs.get(first.id)?.status).toBe('completed');
     expect(repos.runs.get(second.id)?.status).toBe('completed');
-    expect(repos.audit.list().filter((event)=>event.action==='run.bina.summary').at(-1)).toMatchObject({details:expect.objectContaining({newContacts:0,duplicates:1,agenciesFound:1})});
+    const summary=repos.audit.list().filter((event)=>event.action==='run.bina.summary').at(-1);
+    expect(summary?.details).toEqual(expect.objectContaining({newContacts:0,duplicates:1,agenciesFound:1}));
   });
 
   it('redacts an unexpected Bina connector error before persistence',async()=>{
