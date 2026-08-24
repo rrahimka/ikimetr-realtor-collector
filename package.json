@@ -11,6 +11,7 @@
     "db:seed": "pnpm --filter @ikimetr/database db:seed",
     "dev": "node scripts/dev.mjs",
     "lint": "eslint .",
+    "start:local": "node scripts/start-local.mjs",
     "test": "vitest run",
     "test:smoke": "pnpm --filter @ikimetr/web test:smoke",
     "typecheck": "pnpm -r --if-present typecheck"
