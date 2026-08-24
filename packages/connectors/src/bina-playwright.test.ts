@@ -137,6 +137,19 @@ describe('runBinaAgencyConnector', () => {
     expect(maxActiveDocuments).toBe(1);
   });
 
+  it('skips listing URLs rejected by the seven-day recheck policy', async () => {
+    const navigated: string[] = [];
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.startsWith('/items/')) navigated.push(path);
+      await route.fulfill({ status: 200, contentType: 'text/html', body: path.startsWith('/items/') ? agencyHtml() : searchHtml([201, 202]) });
+    }, { shouldProcessUrl: (url) => !url.endsWith('/201') });
+
+    expect(navigated).toEqual(['/items/202']);
+    expect(result.pagesChecked).toBe(1);
+    expect(result.estimatedItems).toBe(1);
+  });
+
   it.each([
     ['http_403', 403, '<html><body>Forbidden</body></html>'],
     ['http_429', 429, '<html><body>Too many requests</body></html>'],

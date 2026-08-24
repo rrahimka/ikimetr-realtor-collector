@@ -52,7 +52,11 @@ export async function processRun(
     return;
   }
 
-  const result = await connector(source, { shouldStop: () => stopRequest(repos, run.id, source.id) });
+  const recheckSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000).toISOString();
+  const result = await connector(source, {
+    shouldStop: () => stopRequest(repos, run.id, source.id),
+    shouldProcessUrl: (url) => !repos.evidence.wasUrlSeenSince(source.id, url, recheckSince),
+  });
   const binaResult = isBinaResult(source, result) ? result : undefined;
   if (binaResult?.stopReason) {
     const cancelled = binaResult.stopReason === 'cancelled' || binaResult.stopReason === 'kill_switch';

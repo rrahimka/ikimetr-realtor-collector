@@ -41,6 +41,7 @@ export interface BinaConnectorOptions {
   configurePage?: (page: Page) => Promise<void>;
   observePage?: (page: Page, phase: BinaPagePhase) => Promise<void>;
   onBlockedRequest?: (url: string) => void;
+  shouldProcessUrl?: (url: string) => boolean | Promise<boolean>;
 }
 
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
@@ -185,7 +186,11 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
     }
 
     const searchHtml = await page.content();
-    const listingUrls = discoverBinaListingUrls(searchHtml, page.url(), maxListings);
+    const discoveredUrls = discoverBinaListingUrls(searchHtml, page.url(), maxListings);
+    const listingUrls: string[] = [];
+    for (const listingUrl of discoveredUrls) {
+      if (!options.shouldProcessUrl || await options.shouldProcessUrl(listingUrl)) listingUrls.push(listingUrl);
+    }
     baseResult.estimatedItems = listingUrls.length;
     const visibleCardCount = await page.locator('[data-bina-listing-card]').count();
     if (visibleCardCount > 0 && listingUrls.length === 0) return resultWithStop(baseResult, 'markup_changed');

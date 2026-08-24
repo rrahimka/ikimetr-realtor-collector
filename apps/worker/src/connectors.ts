@@ -7,11 +7,13 @@ import {
   type ConnectorResult,
 } from '@ikimetr/connectors';
 import type { SourceInput } from '@ikimetr/core';
+import { readBinaScheduleConfig } from './scheduler';
 
 type Source = SourceInput & { id: number };
 
 export interface ConnectorContext {
   shouldStop: () => BinaStopRequest | Promise<BinaStopRequest>;
+  shouldProcessUrl?: (url: string) => boolean | Promise<boolean>;
 }
 
 export interface ConnectorDependencies {
@@ -33,14 +35,16 @@ export function createConnectorRunner(
       return { pagesChecked: 1, estimatedItems: 1, items: [{ sourceUrl: 'https://fixture.invalid/realtor', locationType: 'listing', excerpt: 'Bakı əmlakçı. Mənzil satışı və kirayə. Telefon 050 123 45 67', rawPhone: '050 123 45 67', name: 'Aysel Məmmədova', agency: 'Bakı Emlak', platform: 'fixture', fingerprint: 'fixture-contact-0001' }] };
     }
     if (source.type === 'bina_agency') {
-      const permission = () => env.BINA_ENABLED === 'true' && env.BINA_PERMISSION_CONFIRMED === 'true';
+      const config = readBinaScheduleConfig(env);
+      const permission = () => config.enabled && config.permissionConfirmed;
       if (!permission()) return permissionDisabledResult();
       return dependencies.runBina({
         startUrl: source.locator,
-        maxListings: Math.min(100, Math.max(1, source.maxPages)),
-        delayMs: Math.max(10_000, source.delayMs),
+        maxListings: Math.min(config.maxListings, Math.max(1, source.maxPages)),
+        delayMs: Math.max(config.delayMs, source.delayMs),
         permission,
         shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
       });
     }
     if (source.type === 'website' || source.type === 'listing_page') return crawlWebsite({ startUrl: source.locator, maxPages: source.maxPages, maxDepth: source.maxDepth, delayMs: source.delayMs });

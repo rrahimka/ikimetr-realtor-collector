@@ -63,4 +63,23 @@ describe('worker',()=>{
     expect(repos.runs.get(run.id)).toMatchObject({status:'failed',error:'Bina connector failed'});
     expect(repos.runs.get(run.id)?.error).not.toContain('+994501234567');
   });
+
+  it('provides a seven-day SQLite evidence recheck policy to the Bina connector',async()=>{
+    db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:5,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});
+    const classification={type:'agency' as const,confidence:0.9,reasons:['agency_name'],ruleVersion:'1.0.0' as const,classifiedAt:new Date().toISOString()};
+    const persist=(phone:string,url:string,fingerprint:string)=>repos.contacts.persistEvidence({normalizedPhone:phone,isForeign:false,evidence:{sourceId:source.id,sourceUrl:url,locationType:'listing',excerpt:'Agentlik',rawPhone:phone,platform:'bina.az',fingerprint},classification});
+    persist('+994501111111','https://bina.az/items/301','recent-recheck-evidence');
+    persist('+994502222222','https://bina.az/items/302','old-recheck-evidence');
+    db.prepare("UPDATE evidence SET discovered_at='2026-08-01T00:00:00.000Z' WHERE source_url='https://bina.az/items/302'").run();
+    repos.runs.enqueue(source.id);
+    let recentAllowed: boolean | undefined;
+    let oldAllowed: boolean | undefined;
+    await runWorkerOnce(repos,async(_source,context)=>{
+      recentAllowed=await context?.shouldProcessUrl?.('https://bina.az/items/301');
+      oldAllowed=await context?.shouldProcessUrl?.('https://bina.az/items/302');
+      return{items:[],pagesChecked:0,estimatedItems:0,outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:0,parse_error:0,cancelled:0}};
+    });
+    expect(recentAllowed).toBe(false);
+    expect(oldAllowed).toBe(true);
+  });
 });
