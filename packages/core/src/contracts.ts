@@ -14,9 +14,21 @@ export const sourceSchema = z.object({
   enabled: z.coerce.boolean().default(true),
   killSwitch: z.coerce.boolean().default(false),
 }).superRefine((source, context) => {
-  if (source.type !== 'bina_agency') return;
+  let parsedLocator: URL | undefined;
   try {
-    const locator = new URL(source.locator);
+    parsedLocator = new URL(source.locator);
+  } catch {
+    parsedLocator = undefined;
+  }
+  const exactBinaHost = parsedLocator?.hostname === 'bina.az' || parsedLocator?.hostname === 'www.bina.az';
+  if (source.type !== 'bina_agency') {
+    if ((source.type === 'website' || source.type === 'listing_page') && exactBinaHost) {
+      context.addIssue({ code: 'custom', path: ['type'], message: 'Bina URLs require the dedicated bina_agency source type' });
+    }
+    return;
+  }
+  try {
+    const locator = parsedLocator ?? new URL(source.locator);
     const exactHost = locator.hostname === 'bina.az' || locator.hostname === 'www.bina.az';
     if (locator.protocol !== 'https:' || !exactHost || locator.username || locator.password || locator.port) {
       context.addIssue({ code: 'custom', path: ['locator'], message: 'Bina locator must use an exact allowed HTTPS host' });

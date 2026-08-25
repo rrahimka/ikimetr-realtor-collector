@@ -45,6 +45,10 @@ describe('bina_agency source contract', () => {
     expect(sourceSchema.parse({ ...binaSource, locator: 'https://www.bina.az/baki' }).locator).toBe('https://www.bina.az/baki');
   });
 
+  it.each(['website', 'listing_page'] as const)('rejects a Bina locator disguised as %s', (type) => {
+    expect(() => sourceSchema.parse({ ...binaSource, type })).toThrow();
+  });
+
   it('does not impose Bina limits on the artificial fixture source', () => {
     expect(sourceSchema.parse({
       ...binaSource,

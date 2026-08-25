@@ -74,7 +74,7 @@ const dict: Record<string, Entry> = {
   'sources.killOn': { ru: 'Включить', az: 'Aktiv et' },
   'sourceType.binaAgency': { ru: 'Bina.az — агентства', az: 'Bina.az — agentliklər' },
   'bina.automatic': { ru: 'Автоматический сбор', az: 'Avtomatik toplama' },
-  'bina.interval': { ru: 'Каждые 6 часов', az: 'Hər 6 saatdan bir' },
+  'bina.interval': { ru: 'Каждые {hours} часов', az: 'Hər {hours} saatdan bir' },
   'bina.lastRun': { ru: 'Последний запуск', az: 'Son işə salınma' },
   'bina.nextRun': { ru: 'Следующий запуск', az: 'Növbəti işə salınma' },
   'bina.pagesChecked': { ru: 'Проверено страниц', az: 'Yoxlanılan səhifələr' },

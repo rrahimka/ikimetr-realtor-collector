@@ -68,12 +68,20 @@ export function runSchedulerTick(repos: Repositories, env: NodeJS.ProcessEnv, no
       result.skippedBlocked += 1;
       continue;
     }
-    if (latest?.status === 'completed' && elapsed < config.cycleHours * HOUR_MS) {
+    if ((latest?.status === 'completed' || (latest?.status === 'failed' && !latest.needsReview)) && elapsed < config.cycleHours * HOUR_MS) {
       result.skippedCooldown += 1;
       continue;
     }
-    repos.runs.enqueue(source.id);
-    result.enqueued += 1;
+    try {
+      repos.runs.enqueue(source.id);
+      result.enqueued += 1;
+    } catch (error) {
+      if (error instanceof Error && error.message === 'source already has an active run') {
+        result.skippedActive += 1;
+        continue;
+      }
+      throw error;
+    }
   }
   return result;
 }

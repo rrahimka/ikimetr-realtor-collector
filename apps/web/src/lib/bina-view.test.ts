@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextBinaRunAt, readBinaSummary } from './bina-view';
+import { nextBinaRunAt, readBinaCycleHours, readBinaSummary } from './bina-view';
 
 describe('readBinaSummary', () => {
   it('returns safe numeric counters from the audit payload', () => {
@@ -27,5 +27,19 @@ describe('nextBinaRunAt', () => {
 
   it('does not invent a next date without a terminal timestamp', () => {
     expect(nextBinaRunAt({ status: 'running', finishedAt: null })).toBeUndefined();
+  });
+
+  it('uses the configured cycle instead of displaying a hard-coded six hours', () => {
+    expect(readBinaCycleHours('12')).toBe(12);
+    expect(nextBinaRunAt({ status: 'completed', finishedAt: '2026-08-25T00:00:00.000Z' }, 12)).toBe('2026-08-25T12:00:00.000Z');
+    expect(readBinaCycleHours('1')).toBe(6);
+  });
+
+  it('shows recovered failures as immediately eligible', () => {
+    expect(nextBinaRunAt({ status: 'failed', finishedAt: '2026-08-25T00:00:00.000Z', needsReview: true }, 12)).toBe('2026-08-25T00:00:00.000Z');
+  });
+
+  it('shows the configured cooldown after an ordinary failed run', () => {
+    expect(nextBinaRunAt({ status: 'failed', finishedAt: '2026-08-25T00:00:00.000Z', needsReview: false }, 12)).toBe('2026-08-25T12:00:00.000Z');
   });
 });

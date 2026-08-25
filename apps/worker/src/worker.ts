@@ -58,13 +58,13 @@ export async function processRun(
     shouldProcessUrl: (url) => !repos.evidence.wasUrlSeenSince(source.id, url, recheckSince),
   });
   const binaResult = isBinaResult(source, result) ? result : undefined;
-  if (binaResult?.stopReason) {
-    const cancelled = binaResult.stopReason === 'cancelled' || binaResult.stopReason === 'kill_switch';
+  const terminalStop = binaResult?.stopReason;
+  if (binaResult && (terminalStop === 'cancelled' || terminalStop === 'kill_switch')) {
     repos.runs.finishBina(
       run.id,
-      cancelled ? 'cancelled' : 'blocked',
+      'cancelled',
       { pagesChecked: result.pagesChecked, phonesFound: 0, uniquePhones: 0 },
-      binaResult.stopReason,
+      terminalStop,
       { outcomes: binaResult.outcomes, newContacts: 0, duplicates: 0, agenciesFound: 0 },
     );
     return;
@@ -122,7 +122,7 @@ export async function processRun(
   const counters = { pagesChecked: result.pagesChecked, phonesFound: found, uniquePhones: unique.size };
   if (binaResult) {
     binaResult.outcomes.duplicate += duplicates;
-    repos.runs.finishBina(run.id, 'completed', counters, undefined, { outcomes: binaResult.outcomes, newContacts, duplicates, agenciesFound: agencies.size });
+    repos.runs.finishBina(run.id, terminalStop ? 'blocked' : 'completed', counters, terminalStop, { outcomes: binaResult.outcomes, newContacts, duplicates, agenciesFound: agencies.size });
   } else {
     repos.runs.finish(run.id, 'completed', counters);
   }

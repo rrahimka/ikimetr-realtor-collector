@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chromium, type Browser, type Page, type Response } from 'playwright';
+import { chromium, type Browser, type Locator, type Page, type Response, type Route } from 'playwright';
 import {
   BINA_OUTCOMES,
   discoverBinaListingUrls,
@@ -19,6 +19,8 @@ export type BinaStopReason =
   | 'kill_switch'
   | 'cancelled'
   | 'permission_disabled'
+  | 'robots_disallowed'
+  | 'robots_unavailable'
   | 'technical_error_limit'
   | 'markup_changed';
 
@@ -39,13 +41,79 @@ export interface BinaConnectorOptions {
   sleep?: (milliseconds: number) => Promise<void>;
   launch?: () => Promise<Browser>;
   configurePage?: (page: Page) => Promise<void>;
+  handleAllowedRequest?: (route: Route) => Promise<void>;
   observePage?: (page: Page, phase: BinaPagePhase) => Promise<void>;
   onBlockedRequest?: (url: string) => void;
   shouldProcessUrl?: (url: string) => boolean | Promise<boolean>;
 }
 
-const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
+const ALLOWED_RESOURCE_TYPES = new Set(['document', 'script', 'stylesheet']);
 const PHONE_BUTTON_NAME = 'Nömrəni göstər';
+const SELLER_CARD_SELECTOR = '[data-bina-seller-card], .product-owner, .product-owner__info';
+const ROBOTS_PRODUCT_TOKEN = 'ikimetr-realtor-collector';
+const ROBOTS_USER_AGENT = 'IkiMetr-Realtor-Collector/1.0';
+
+export function isAllowedBinaRequest(input: string, resourceType: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(validateBinaUrl(input, 'search'));
+  } catch {
+    return false;
+  }
+  if (!ALLOWED_RESOURCE_TYPES.has(resourceType)) return false;
+  if (resourceType === 'document') return true;
+  if (/(?:^|[/_-])(?:api|graphql|track|tracker|tracking|analytics|advert|ads?)(?:[/_-]|\.|$)/iu.test(url.pathname)) return false;
+  return resourceType === 'script' ? /\.m?js$/iu.test(url.pathname) : /\.css$/iu.test(url.pathname);
+}
+
+export function isAllowedByBinaRobots(robots: string, path: string): boolean {
+  type Rule = { allow: boolean; value: string };
+  type Group = { agents: string[]; rules: Rule[] };
+  const groups: Group[] = [];
+  let group: Group | undefined;
+  for (const rawLine of robots.split(/\r?\n/u)) {
+    const line = rawLine.split('#')[0]?.trim() ?? '';
+    if (!line) continue;
+    const separator = line.indexOf(':');
+    if (separator < 0) continue;
+    const key = line.slice(0, separator).trim().toLowerCase();
+    const value = line.slice(separator + 1).trim();
+    if (key === 'user-agent') {
+      if (!group || group.rules.length > 0) {
+        group = { agents: [], rules: [] };
+        groups.push(group);
+      }
+      group.agents.push(value.toLowerCase());
+      continue;
+    }
+    if (key !== 'allow' && key !== 'disallow') continue;
+    if (group && value) group.rules.push({ allow: key === 'allow', value });
+  }
+
+  const specificity = (candidate: Group) => Math.max(0, ...candidate.agents
+    .filter((agent) => agent !== '*' && ROBOTS_PRODUCT_TOKEN.includes(agent))
+    .map((agent) => agent.length));
+  const bestSpecificity = Math.max(0, ...groups.map(specificity));
+  const selected = bestSpecificity > 0
+    ? groups.filter((candidate) => specificity(candidate) === bestSpecificity)
+    : groups.filter((candidate) => candidate.agents.includes('*'));
+  const matches = (rule: Rule) => {
+    const anchored = rule.value.endsWith('$');
+    const source = (anchored ? rule.value.slice(0, -1) : rule.value)
+      .split('*')
+      .map((part) => part.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&'))
+      .join('.*');
+    return new RegExp(`^${source}${anchored ? '$' : ''}`, 'u').test(path);
+  };
+  const matching = selected
+    .flatMap((candidate) => candidate.rules)
+    .filter(matches)
+    .sort((left, right) => {
+      const lengthDifference = right.value.replace(/[*$]/gu, '').length - left.value.replace(/[*$]/gu, '').length;
+      return lengthDifference || Number(right.allow) - Number(left.allow);
+    });
+  return matching[0]?.allow ?? true;
+}
 
 function emptyOutcomes(): Record<BinaOutcome, number> {
   return Object.fromEntries(BINA_OUTCOMES.map((outcome) => [outcome, 0])) as Record<BinaOutcome, number>;
@@ -70,26 +138,34 @@ async function detectedProtection(page: Page, response: Response | null): Promis
   return undefined;
 }
 
-async function visibleText(page: Page, selector: string): Promise<string | undefined> {
-  const locator = page.locator(`${selector}:visible`).first();
+async function visibleText(container: Page | Locator, selector: string): Promise<string | undefined> {
+  const locator = container.locator(`${selector}:visible`).first();
   if (await locator.count() === 0) return undefined;
   const text = (await locator.innerText()).trim();
   return text === '' ? undefined : text;
 }
 
-async function findVisibleReveal(page: Page) {
-  const candidates = page
-    .getByRole('button', { name: PHONE_BUTTON_NAME, exact: true })
-    .or(page.getByRole('link', { name: PHONE_BUTTON_NAME, exact: true }));
-  for (let index = 0; index < await candidates.count(); index += 1) {
-    const candidate = candidates.nth(index);
-    if (await candidate.isVisible()) return candidate;
+async function findAgencySeller(page: Page): Promise<{ card: Locator; reveal?: Locator } | undefined> {
+  const cards = page.locator(SELLER_CARD_SELECTOR);
+  for (let index = 0; index < await cards.count(); index += 1) {
+    const card = cards.nth(index);
+    if (!await card.isVisible()) continue;
+    const lines = (await card.innerText()).split(/\r?\n/u);
+    if (!lines.some((line) => hasVisibleAgencyMarker(line))) continue;
+    const reveals = card
+      .getByRole('button', { name: PHONE_BUTTON_NAME, exact: true })
+      .or(card.getByRole('link', { name: PHONE_BUTTON_NAME, exact: true }));
+    for (let revealIndex = 0; revealIndex < await reveals.count(); revealIndex += 1) {
+      const reveal = reveals.nth(revealIndex);
+      if (await reveal.isVisible()) return { card, reveal };
+    }
+    return { card };
   }
   return undefined;
 }
 
-async function readVisiblePhone(page: Page): Promise<string | undefined> {
-  const candidates = page.locator('[data-bina-phone]:visible, a[href^="tel:"]:visible');
+async function readVisiblePhone(container: Locator): Promise<string | undefined> {
+  const candidates = container.locator('[data-bina-phone]:visible, a[href^="tel:"]:visible');
   for (let index = 0; index < await candidates.count(); index += 1) {
     const text = (await candidates.nth(index).innerText()).trim();
     if (text !== '') return text;
@@ -112,18 +188,14 @@ async function installRequestPolicy(page: Page, options: BinaConnectorOptions, r
   });
   await page.route('**/*', async (route) => {
     const request = route.request();
-    if (BLOCKED_RESOURCE_TYPES.has(request.resourceType())) {
+    if (!isAllowedBinaRequest(request.url(), request.resourceType())) {
+      if (request.isNavigationRequest()) redirected.url = request.url();
+      options.onBlockedRequest?.(request.url());
       await route.abort('blockedbyclient');
       return;
     }
-    try {
-      validateBinaUrl(request.url(), 'search');
-      await route.continue();
-    } catch {
-      redirected.url = request.url();
-      options.onBlockedRequest?.(request.url());
-      await route.abort('blockedbyclient');
-    }
+    if (options.handleAllowedRequest) await options.handleAllowedRequest(route);
+    else await route.continue();
   });
   await page.routeWebSocket('**', (webSocket) => webSocket.close({ code: 1008, reason: 'WebSocket blocked' }));
   page.on('download', (download) => { void download.cancel(); });
@@ -164,10 +236,37 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
 
   try {
     browser = await launch();
-    context = await browser.newContext({ acceptDownloads: false, serviceWorkers: 'block' });
+    context = await browser.newContext({ acceptDownloads: false, serviceWorkers: 'block', userAgent: ROBOTS_USER_AGENT });
     page = await context.newPage();
     await installRequestPolicy(page, options, redirected);
     await options.configurePage?.(page);
+
+    if (!(await options.permission())) return resultWithStop(baseResult, 'permission_disabled');
+    const beforeRobotsStop = await options.shouldStop();
+    if (beforeRobotsStop) return resultWithStop(baseResult, beforeRobotsStop, 'cancelled');
+    const robotsUrl = new URL('/robots.txt', startUrl).toString();
+    let robotsResponse: Response | null;
+    try {
+      robotsResponse = await page.goto(robotsUrl, { waitUntil: 'domcontentloaded' });
+    } catch {
+      if (redirected.url) return resultWithStop(baseResult, 'external_redirect');
+      return resultWithStop(baseResult, 'robots_unavailable');
+    }
+    const robotsProtection = await detectedProtection(page, robotsResponse);
+    if (robotsProtection) return resultWithStop(baseResult, robotsProtection);
+    if (!robotsResponse?.ok()) return resultWithStop(baseResult, 'robots_unavailable');
+    try {
+      validateBinaUrl(page.url(), 'search');
+    } catch {
+      return resultWithStop(baseResult, 'external_redirect');
+    }
+    const robotsText = await page.locator('body').innerText().catch(() => '');
+    if (!robotsText) return resultWithStop(baseResult, 'robots_unavailable');
+    if (!isAllowedByBinaRobots(robotsText, new URL(startUrl).pathname)) return resultWithStop(baseResult, 'robots_disallowed');
+
+    if (!(await options.permission())) return resultWithStop(baseResult, 'permission_disabled');
+    const beforeSearchStop = await options.shouldStop();
+    if (beforeSearchStop) return resultWithStop(baseResult, beforeSearchStop, 'cancelled');
 
     let searchResponse: Response | null;
     try {
@@ -185,22 +284,31 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
       return resultWithStop(baseResult, 'external_redirect');
     }
 
-    const searchHtml = await page.content();
-    const discoveredUrls = discoverBinaListingUrls(searchHtml, page.url(), maxListings);
-    const listingUrls: string[] = [];
-    for (const listingUrl of discoveredUrls) {
-      if (!options.shouldProcessUrl || await options.shouldProcessUrl(listingUrl)) listingUrls.push(listingUrl);
+    let listingUrls: string[];
+    try {
+      const searchHtml = await page.content();
+      const discoveredUrls = discoverBinaListingUrls(searchHtml, page.url(), maxListings);
+      if (discoveredUrls.length === 0) return resultWithStop(baseResult, 'markup_changed');
+      listingUrls = [];
+      for (const listingUrl of discoveredUrls) {
+        if (!options.shouldProcessUrl || await options.shouldProcessUrl(listingUrl)) listingUrls.push(listingUrl);
+      }
+      baseResult.estimatedItems = listingUrls.length;
+      const visibleCardCount = await page.locator('[data-bina-listing-card]').count();
+      if (visibleCardCount > 0 && listingUrls.length === 0) return resultWithStop(baseResult, 'markup_changed');
+    } catch {
+      return resultWithStop(baseResult, 'markup_changed');
     }
-    baseResult.estimatedItems = listingUrls.length;
-    const visibleCardCount = await page.locator('[data-bina-listing-card]').count();
-    if (visibleCardCount > 0 && listingUrls.length === 0) return resultWithStop(baseResult, 'markup_changed');
 
     let consecutiveTechnicalErrors = 0;
     for (const listingUrl of listingUrls) {
       if (!(await options.permission())) return resultWithStop(baseResult, 'permission_disabled');
+      const beforeDelayStop = await options.shouldStop();
+      if (beforeDelayStop) return resultWithStop(baseResult, beforeDelayStop, 'cancelled');
+      await sleep(delayMs);
+      if (!(await options.permission())) return resultWithStop(baseResult, 'permission_disabled');
       const requestedStop = await options.shouldStop();
       if (requestedStop) return resultWithStop(baseResult, requestedStop, 'cancelled');
-      await sleep(delayMs);
       baseResult.pagesChecked += 1;
 
       let response: Response | null;
@@ -233,42 +341,48 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         return resultWithStop(baseResult, 'external_redirect');
       }
 
-      const visibleTextContent = await page.locator('body').innerText();
-      if (!visibleTextContent.split(/\r?\n/u).some((line) => hasVisibleAgencyMarker(line))) {
-        outcomes.private_seller += 1;
-        consecutiveTechnicalErrors = 0;
-        continue;
-      }
+      try {
+        const seller = await findAgencySeller(page);
+        if (!seller) {
+          outcomes.private_seller += 1;
+          consecutiveTechnicalErrors = 0;
+          continue;
+        }
+        if (!seller.reveal) {
+          outcomes.missing_phone += 1;
+          consecutiveTechnicalErrors = 0;
+          continue;
+        }
+        if (await readVisiblePhone(seller.card)) return resultWithStop(baseResult, 'markup_changed');
 
-      await options.observePage?.(page, 'before_phone_reveal');
-      const reveal = await findVisibleReveal(page);
-      if (!reveal) {
-        outcomes.missing_phone += 1;
-        consecutiveTechnicalErrors = 0;
-        continue;
-      }
-      await reveal.click();
-      await options.observePage?.(page, 'after_phone_reveal');
-      const visiblePhone = await readVisiblePhone(page);
-      if (!visiblePhone) {
-        outcomes.missing_phone += 1;
-        consecutiveTechnicalErrors = 0;
-        continue;
-      }
-      const phone = normalizeVisibleBinaPhone(visiblePhone);
-      if (!phone) {
-        outcomes.invalid_phone += 1;
-        consecutiveTechnicalErrors = 0;
-        continue;
-      }
+        await options.observePage?.(page, 'before_phone_reveal');
+        await seller.reveal.click();
+        await options.observePage?.(page, 'after_phone_reveal');
+        const visiblePhone = await readVisiblePhone(seller.card);
+        if (!visiblePhone) {
+          outcomes.missing_phone += 1;
+          consecutiveTechnicalErrors = 0;
+          continue;
+        }
+        const phone = normalizeVisibleBinaPhone(visiblePhone);
+        if (!phone) {
+          outcomes.invalid_phone += 1;
+          consecutiveTechnicalErrors = 0;
+          continue;
+        }
 
-      const canonicalUrl = validateBinaUrl(page.url(), 'listing');
-      const name = await visibleText(page, '[data-bina-name], h1');
-      const agency = await visibleText(page, '[data-bina-agency]');
-      const location = await visibleText(page, '[data-bina-location]');
-      baseResult.items.push(listingEvidence(canonicalUrl, phone, { ...(name ? { name } : {}), ...(agency ? { agency } : {}), ...(location ? { location } : {}) }));
-      outcomes.accepted += 1;
-      consecutiveTechnicalErrors = 0;
+        const canonicalUrl = validateBinaUrl(page.url(), 'listing');
+        const name = await visibleText(page, '[data-bina-name], h1');
+        const agency = await visibleText(seller.card, '[data-bina-agency]');
+        const location = await visibleText(page, '[data-bina-location]');
+        baseResult.items.push(listingEvidence(canonicalUrl, phone, { ...(name ? { name } : {}), ...(agency ? { agency } : {}), ...(location ? { location } : {}) }));
+        outcomes.accepted += 1;
+        consecutiveTechnicalErrors = 0;
+      } catch {
+        outcomes.parse_error += 1;
+        consecutiveTechnicalErrors += 1;
+        if (consecutiveTechnicalErrors >= 5) return resultWithStop(baseResult, 'technical_error_limit');
+      }
     }
     return baseResult;
   } finally {

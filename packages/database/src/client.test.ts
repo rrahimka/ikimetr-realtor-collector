@@ -98,4 +98,36 @@ describe('createDatabase', () => {
     expect(migrated.pragma('foreign_key_check')).toEqual([]);
     migrated.close();
   });
+
+  it('rolls the runs migration back before dropping legacy data when integrity validation fails', () => {
+    const dbPath = join(makeTempDir(), 'invalid-legacy.db');
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      PRAGMA foreign_keys = OFF;
+      CREATE TABLE sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, type TEXT NOT NULL,
+        locator TEXT NOT NULL, language TEXT NOT NULL, max_pages INTEGER NOT NULL,
+        max_depth INTEGER NOT NULL, delay_ms INTEGER NOT NULL, enabled INTEGER NOT NULL,
+        kill_switch INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed','cancelled')),
+        started_at TEXT, finished_at TEXT, pages_checked INTEGER NOT NULL DEFAULT 0,
+        phones_found INTEGER NOT NULL DEFAULT 0, unique_phones INTEGER NOT NULL DEFAULT 0,
+        error TEXT, cancellation_requested INTEGER NOT NULL DEFAULT 0,
+        needs_review INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+      );
+      INSERT INTO runs VALUES(9,999,'completed',NULL,'2026-08-24',1,0,0,NULL,0,0,'2026-08-24');
+    `);
+    legacy.close();
+
+    expect(() => createDatabase(dbPath)).toThrow();
+    const inspected = new Database(dbPath);
+    expect(inspected.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='runs'").get()).toEqual({ name: 'runs' });
+    expect(inspected.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='runs_before_bina_blocked'").get()).toBeUndefined();
+    expect(inspected.prepare('SELECT id,source_id,status FROM runs').all()).toEqual([{ id: 9, source_id: 999, status: 'completed' }]);
+    expect(inspected.pragma('user_version', { simple: true })).toBe(0);
+    inspected.close();
+  });
 });

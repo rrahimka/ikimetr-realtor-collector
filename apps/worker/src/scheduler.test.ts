@@ -74,6 +74,26 @@ describe('runSchedulerTick', () => {
     expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 24 * HOUR))).toMatchObject({ enqueued: 1 });
   });
 
+  it('applies the normal cooldown after an unexpected failed cycle', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
+    const { repos, source } = setup();
+    const queued = repos.runs.enqueue(source.id);
+    repos.runs.claimNext();
+    repos.runs.finish(queued.id, 'failed', undefined, 'Bina connector failed');
+
+    expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 6 * HOUR - 1))).toMatchObject({ enqueued: 0, skippedCooldown: 1 });
+    expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 6 * HOUR))).toMatchObject({ enqueued: 1 });
+  });
+
+  it('treats a concurrent manual enqueue race as an active-run skip', () => {
+    const { repos } = setup();
+    vi.spyOn(repos.runs, 'hasActive').mockReturnValue(false);
+    vi.spyOn(repos.runs, 'enqueue').mockImplementation(() => { throw new Error('source already has an active run'); });
+
+    expect(runSchedulerTick(repos, enabledEnv, new Date())).toMatchObject({ enqueued: 0, skippedActive: 1 });
+  });
+
   it('does not enqueue when either permission flag is disabled', () => {
     const { repos } = setup();
     expect(runSchedulerTick(repos, { BINA_ENABLED: 'true', BINA_PERMISSION_CONFIRMED: 'false' }, new Date())).toMatchObject({ enqueued: 0, permissionsDisabled: true });

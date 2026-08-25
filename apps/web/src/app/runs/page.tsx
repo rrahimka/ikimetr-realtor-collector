@@ -1,5 +1,5 @@
 import { ApiButton } from '../../components/api-button';
-import { nextBinaRunAt, readBinaSummary } from '../../lib/bina-view';
+import { nextBinaRunAt, readBinaCycleHours, readBinaSummary } from '../../lib/bina-view';
 import { getRepositories } from '../../lib/db';
 import { getLang } from '../../lib/lang';
 import { formatDateTime, t, tEnum } from '../../lib/i18n';
@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function Runs() {
   const lang = await getLang();
   const repos = getRepositories();
+  const cycleHours = readBinaCycleHours(process.env.BINA_CYCLE_HOURS);
   const sourceRows = repos.sources.list();
   const sourceNames = new Map(sourceRows.map((source) => [source.id, source.name]));
   const sourceTypes = new Map(sourceRows.map((source) => [source.id, source.type]));
@@ -29,7 +30,7 @@ export default async function Runs() {
         return <tr key={run.id}>
           <td>{sourceNames.get(run.sourceId) ?? run.sourceId}{bina && <><br /><span className="muted">{t(lang, 'sourceType.binaAgency')}</span></>}</td>
           <td><span className="badge">{tEnum(lang, 'run', run.status)}</span>{run.needsReview && ` · ${t(lang, 'runs.review')}`}</td>
-          <td>{formatDateTime(lang, run.startedAt)}<br />{formatDateTime(lang, run.finishedAt)}{bina && <><br /><span className="muted">{t(lang, 'bina.nextRun')}: {formatDateTime(lang, nextBinaRunAt(run))}</span></>}</td>
+          <td>{formatDateTime(lang, run.startedAt)}<br />{formatDateTime(lang, run.finishedAt)}{bina && <><br /><span className="muted">{t(lang, 'bina.nextRun')}: {formatDateTime(lang, nextBinaRunAt(run, cycleHours))}</span></>}</td>
           <td>{run.pagesChecked}</td>
           <td>{run.phonesFound} / {run.uniquePhones}{bina && <><br /><span className="muted">{t(lang, 'bina.agenciesFound')}: {summary.agenciesFound} · {t(lang, 'bina.newContacts')}: {summary.newContacts}<br />{t(lang, 'bina.duplicates')}: {summary.duplicates} · {t(lang, 'bina.privateSkipped')}: {summary.privateSellers}</span></>}</td>
           <td className="error">{run.error ? `${bina ? `${t(lang, 'bina.stopReason')}: ` : ''}${run.error}` : '—'}</td>

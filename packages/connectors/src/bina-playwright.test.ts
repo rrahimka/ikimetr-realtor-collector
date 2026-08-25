@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { chromium, type Browser, type Page, type Route } from 'playwright';
-import { runBinaAgencyConnector, type BinaConnectorOptions } from './bina-playwright';
+import { chromium, type Browser, type Route } from 'playwright';
+import { isAllowedBinaRequest, isAllowedByBinaRobots, runBinaAgencyConnector, type BinaConnectorOptions } from './bina-playwright';
 
 const searchUrl = 'https://bina.az/baki/alqi-satqi/menziller';
 const openedBrowsers = new Set<Browser>();
@@ -20,11 +20,13 @@ function agencyHtml(options: { phone?: string; marker?: string; name?: string; a
   const phone = options.phone ?? '+994 50 123 45 67';
   return `<!doctype html><html><head><meta charset="utf-8"></head><body>
     <h1 data-bina-name>${options.name ?? 'Aysel Məmmədova'}</h1>
-    <div data-bina-agency>${options.agency ?? 'Bakı Emlak'}</div>
     <div data-bina-location>${options.location ?? 'Bakı'}</div>
-    <strong>${options.marker ?? 'Agentlik'}</strong>
-    <button type="button" onclick="document.querySelector('[data-bina-phone]').hidden=false">Nömrəni göstər</button>
-    <a data-bina-phone hidden href="tel:${phone}">${phone}</a>
+    <section data-bina-seller-card>
+      <div data-bina-agency>${options.agency ?? 'Bakı Emlak'}</div>
+      <strong>${options.marker ?? 'Agentlik'}</strong>
+      <button type="button" onclick="this.parentElement.querySelector('[data-bina-phone]').hidden=false">Nömrəni göstər</button>
+      <a data-bina-phone hidden href="tel:${phone}">${phone}</a>
+    </section>
   </body></html>`;
 }
 
@@ -34,9 +36,13 @@ function privateSellerHtml(): string {
 
 type Fixture = (route: Route) => Promise<void> | void;
 
-async function runWithFixture(fixture: Fixture, overrides: Partial<BinaConnectorOptions> = {}) {
+async function runWithFixture(
+  fixture: Fixture,
+  overrides: Partial<BinaConnectorOptions> = {},
+  robots = 'User-agent: *\nAllow: /\n',
+) {
   const launch = async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, args: ['--host-resolver-rules=MAP * 0.0.0.0'] });
     openedBrowsers.add(browser);
     return browser;
   };
@@ -48,8 +54,13 @@ async function runWithFixture(fixture: Fixture, overrides: Partial<BinaConnector
     shouldStop: () => false,
     sleep: () => Promise.resolve(),
     launch,
-    configurePage: async (page: Page) => {
-      await page.route('https://bina.az/**', fixture);
+    handleAllowedRequest: async (route: Route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/robots.txt') {
+        await route.fulfill({ status: 200, contentType: 'text/plain', body: robots });
+        return;
+      }
+      await fixture(route);
     },
     ...overrides,
   });
@@ -96,6 +107,30 @@ describe('runBinaAgencyConnector', () => {
 
     expect(result.items).toHaveLength(0);
     expect(result.outcomes.private_seller).toBe(1);
+  });
+
+  it('does not accept an incidental Agentlik marker or unrelated phone outside the seller card', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const body = path.startsWith('/items/')
+        ? privateSellerHtml().replace('</body>', '<p>Agentlik xidmətləri haqqında reklam</p><a href="tel:+994501234567">+994501234567</a></body>')
+        : searchHtml([107]);
+      await route.fulfill({ status: 200, contentType: 'text/html', body });
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.outcomes.private_seller).toBe(1);
+  });
+
+  it('rejects a phone that was already visible before the reveal click', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const body = path.startsWith('/items/') ? agencyHtml().replace('data-bina-phone hidden', 'data-bina-phone') : searchHtml([108]);
+      await route.fulfill({ status: 200, contentType: 'text/html', body });
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.stopReason).toBe('markup_changed');
   });
 
   it.each([
@@ -150,6 +185,46 @@ describe('runBinaAgencyConnector', () => {
     expect(result.estimatedItems).toBe(1);
   });
 
+  it('honors robots.txt before visiting the configured search path', async () => {
+    let searchVisited = false;
+    const result = await runWithFixture(async (route) => {
+      searchVisited = true;
+      await route.fulfill({ status: 200, contentType: 'text/html', body: searchHtml([203]) });
+    }, {}, 'User-agent: *\nDisallow: /baki\n');
+
+    expect(searchVisited).toBe(false);
+    expect(result.stopReason).toBe('robots_disallowed');
+    expect(result.outcomes.blocked).toBe(1);
+  });
+
+  it('does not let a robots wildcard Allow overmatch a disallowed path', () => {
+    const robots = 'User-agent: *\nDisallow: /baki/\nAllow: /baki/*.html$\n';
+    expect(isAllowedByBinaRobots(robots, '/baki/private')).toBe(false);
+    expect(isAllowedByBinaRobots(robots, '/baki/listing.html')).toBe(true);
+  });
+
+  it('uses the matching collector group instead of mixing it with wildcard rules', () => {
+    const robots = 'User-agent: *\nAllow: /baki/private\nUser-agent: ikimetr-realtor-collector\nDisallow: /baki\n';
+    expect(isAllowedByBinaRobots(robots, '/baki/private')).toBe(false);
+  });
+
+  it('identifies the collector with the same product token used for robots matching', async () => {
+    let userAgent = '';
+    await runWithFixture(async (route) => {
+      userAgent = route.request().headers()['user-agent'] ?? '';
+      await route.fulfill({ status: 200, contentType: 'text/html', body: searchHtml([]) });
+    });
+    expect(userAgent.toLowerCase()).toContain('ikimetr-realtor-collector');
+  });
+
+  it('blocks same-origin hidden APIs and first-party tracking requests', () => {
+    expect(isAllowedBinaRequest('https://bina.az/api/phones/1', 'fetch')).toBe(false);
+    expect(isAllowedBinaRequest('https://bina.az/graphql', 'xhr')).toBe(false);
+    expect(isAllowedBinaRequest('https://bina.az/assets/analytics.js', 'script')).toBe(false);
+    expect(isAllowedBinaRequest('https://bina.az/assets/app.js', 'script')).toBe(true);
+    expect(isAllowedBinaRequest('https://bina.az/items/101', 'document')).toBe(true);
+  });
+
   it.each([
     ['http_403', 403, '<html><body>Forbidden</body></html>'],
     ['http_429', 429, '<html><body>Too many requests</body></html>'],
@@ -191,6 +266,44 @@ describe('runBinaAgencyConnector', () => {
     expect(result.pagesChecked).toBe(0);
   });
 
+  it('rechecks permission after setup and after every delay', async () => {
+    let permission = true;
+    let listingVisited = false;
+    const searchBlocked = await runWithFixture((route) => route.fulfill({ status: 200, contentType: 'text/html', body: searchHtml([109]) }), {
+      permission: () => permission,
+      configurePage: () => { permission = false; return Promise.resolve(); },
+    });
+    expect(searchBlocked.stopReason).toBe('permission_disabled');
+    expect(searchBlocked.pagesChecked).toBe(0);
+
+    permission = true;
+    const listingBlocked = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.startsWith('/items/')) listingVisited = true;
+      await route.fulfill({ status: 200, contentType: 'text/html', body: path.startsWith('/items/') ? agencyHtml() : searchHtml([110]) });
+    }, {
+      permission: () => permission,
+      sleep: () => { permission = false; return Promise.resolve(); },
+    });
+    expect(listingBlocked.stopReason).toBe('permission_disabled');
+    expect(listingVisited).toBe(false);
+    expect(listingBlocked.pagesChecked).toBe(0);
+
+    let stopped = false;
+    const killBlocked = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.startsWith('/items/')) listingVisited = true;
+      await route.fulfill({ status: 200, contentType: 'text/html', body: path.startsWith('/items/') ? agencyHtml() : searchHtml([111]) });
+    }, {
+      permission: () => true,
+      shouldStop: () => stopped ? 'kill_switch' : false,
+      sleep: () => { stopped = true; return Promise.resolve(); },
+    });
+    expect(killBlocked.stopReason).toBe('kill_switch');
+    expect(listingVisited).toBe(false);
+    expect(killBlocked.pagesChecked).toBe(0);
+  });
+
   it('refuses to launch a browser when permission flags are disabled', async () => {
     let launched = false;
     const result = await runBinaAgencyConnector({
@@ -226,6 +339,32 @@ describe('runBinaAgencyConnector', () => {
     expect(result.pagesChecked).toBe(5);
   });
 
+  it('counts DOM and click failures and blocks only at the five-error threshold', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({ status: 200, contentType: 'text/html', body: path.startsWith('/items/') ? agencyHtml() : searchHtml([1, 2, 3, 4, 5, 6]) });
+    }, {
+      maxListings: 6,
+      observePage: () => Promise.reject(new Error('artificial DOM failure')),
+    });
+
+    expect(result.stopReason).toBe('technical_error_limit');
+    expect(result.outcomes.parse_error).toBe(5);
+    expect(result.pagesChecked).toBe(5);
+  });
+
+  it('returns earlier accepted items when a later listing blocks the cycle', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const body = path.endsWith('/1') ? agencyHtml() : path.endsWith('/2') ? '<html><body>CAPTCHA</body></html>' : searchHtml([1, 2]);
+      await route.fulfill({ status: 200, contentType: 'text/html', body });
+    });
+
+    expect(result.stopReason).toBe('captcha');
+    expect(result.items).toHaveLength(1);
+    expect(result.outcomes.accepted).toBe(1);
+  });
+
   it('marks a removed listing as a normal non-blocking outcome', async () => {
     const result = await runWithFixture(async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -245,6 +384,18 @@ describe('runBinaAgencyConnector', () => {
 
     expect(result.stopReason).toBe('markup_changed');
     expect(result.outcomes.blocked).toBe(1);
+  });
+
+  it('blocks a search page with no discoverable listing URLs', async () => {
+    const result = await runWithFixture((route) => route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<html><body><nav><a href="/">Home</a><a href="/baki">Bakı</a></nav></body></html>',
+    }));
+
+    expect(result.stopReason).toBe('markup_changed');
+    expect(result.outcomes.blocked).toBe(1);
+    expect(result.pagesChecked).toBe(0);
   });
 
   it('closes page, context, and browser when setup throws', async () => {

@@ -37,7 +37,8 @@ describe('i18n', () => {
     expect(t('ru', 'sourceType.binaAgency')).toBe('Bina.az — агентства');
     expect(t('az', 'sourceType.binaAgency')).toBe('Bina.az — agentliklər');
     expect(t('ru', 'bina.automatic')).toBe('Автоматический сбор');
-    expect(t('az', 'bina.interval')).toBe('Hər 6 saatdan bir');
+    expect(t('az', 'bina.interval', { hours: 6 })).toBe('Hər 6 saatdan bir');
+    expect(t('ru', 'bina.interval', { hours: 12 })).toBe('Каждые 12 часов');
     for (const key of ['bina.lastRun', 'bina.nextRun', 'bina.pagesChecked', 'bina.agenciesFound', 'bina.newContacts', 'bina.duplicates', 'bina.privateSkipped', 'bina.stopReason']) {
       expect(t('ru', key)).not.toBe(key);
       expect(t('az', key)).not.toBe(key);

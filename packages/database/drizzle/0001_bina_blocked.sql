@@ -17,6 +17,19 @@ SELECT
   id, source_id, status, started_at, finished_at, pages_checked, phones_found,
   unique_phones, error, cancellation_requested, needs_review, created_at
 FROM runs_before_bina_blocked;
+CREATE TEMP TABLE bina_migration_guard (
+  verified INTEGER NOT NULL CHECK (verified = 1)
+);
+INSERT INTO bina_migration_guard(verified)
+SELECT CASE
+  WHEN (SELECT COUNT(*) FROM runs) = (SELECT COUNT(*) FROM runs_before_bina_blocked)
+   AND NOT EXISTS (
+     SELECT 1 FROM runs LEFT JOIN sources ON sources.id = runs.source_id
+     WHERE sources.id IS NULL
+   )
+  THEN 1 ELSE 0
+END;
+DROP TABLE bina_migration_guard;
 DROP TABLE runs_before_bina_blocked;
 CREATE UNIQUE INDEX one_active_run_per_source ON runs(source_id) WHERE status IN ('queued','running');
 PRAGMA user_version = 1;

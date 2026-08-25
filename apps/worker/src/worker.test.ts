@@ -14,11 +14,14 @@ describe('createConnectorRunner',()=>{
 
   it('passes hard-limited Bina options and live stop guards to the dedicated runner',async()=>{
     db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:100,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});
+    const env={BINA_ENABLED:'true',BINA_PERMISSION_CONFIRMED:'true'};
     let captured: Record<string, unknown> | undefined;
-    const runner=createConnectorRunner({BINA_ENABLED:'true',BINA_PERMISSION_CONFIRMED:'true'}, {runBina:(options)=>{captured=options as unknown as Record<string,unknown>;return Promise.resolve({items:[],pagesChecked:0,estimatedItems:0,outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:0,parse_error:0,cancelled:0}});}});
+    const runner=createConnectorRunner(env, {runBina:(options)=>{captured=options as unknown as Record<string,unknown>;return Promise.resolve({items:[],pagesChecked:0,estimatedItems:0,outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:0,parse_error:0,cancelled:0}});}});
     await runner(source,{shouldStop:()=>false});
     expect(captured).toMatchObject({startUrl:'https://bina.az/search',maxListings:100,delayMs:10000});
     expect(await (captured?.permission as ()=>Promise<boolean>)()).toBe(true);
+    env.BINA_PERMISSION_CONFIRMED='false';
+    expect(await (captured?.permission as ()=>Promise<boolean>)()).toBe(false);
     expect(await (captured?.shouldStop as ()=>Promise<false>)()).toBe(false);
   });
 
@@ -28,6 +31,13 @@ describe('createConnectorRunner',()=>{
     const result=await createConnectorRunner({BINA_ENABLED:'true',BINA_PERMISSION_CONFIRMED:'false'},{runBina})(source,{shouldStop:()=>false});
     expect(runBina).not.toHaveBeenCalled();
     expect(result).toMatchObject({stopReason:'permission_disabled',outcomes:{blocked:1}});
+  });
+
+  it.each(['website','listing_page'] as const)('never dispatches the production generic %s connector',async(type)=>{
+    db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Generic',type,locator:'https://bina.az/search',language:'AZ',maxPages:1,maxDepth:0,delayMs:0,enabled:true,killSwitch:false});
+    const crawlWebsite=vi.fn();
+    await expect(createConnectorRunner({}, {runBina:vi.fn(),crawlWebsite})(source)).rejects.toThrow('disabled in local-only mode');
+    expect(crawlWebsite).not.toHaveBeenCalled();
   });
 });
 
@@ -46,6 +56,14 @@ describe('worker',()=>{
     const details=summary.details as Record<string,unknown>;
     if (!details.outcomes || typeof details.outcomes !== 'object') throw new Error('Bina outcomes missing');
     expect((details.outcomes as Record<string,unknown>).blocked).toBe(1);
+  });
+
+  it('persists accepted Bina evidence collected before a later blocked stop',async()=>{
+    db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:5,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});const run=repos.runs.enqueue(source.id);
+    await runWorkerOnce(repos,()=>Promise.resolve({items:[{sourceUrl:'https://bina.az/items/401',locationType:'listing',excerpt:'Agentlik · Bakı Emlak',rawPhone:'+994501234567',agency:'Bakı Emlak',platform:'bina.az',fingerprint:'blocked-after-accepted'}],pagesChecked:2,estimatedItems:2,stopReason:'captcha',outcomes:{accepted:1,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:1,parse_error:0,cancelled:0}}));
+    expect(repos.runs.get(run.id)).toMatchObject({status:'blocked',error:'captcha',phonesFound:1,uniquePhones:1});
+    expect(repos.contacts.list()).toHaveLength(1);
+    expect(repos.contacts.evidenceFor('+994501234567')).toHaveLength(1);
   });
 
   it('deduplicates a Bina phone, preserves verification, and stores evidence per listing',async()=>{

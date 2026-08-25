@@ -18,6 +18,7 @@ export interface ConnectorContext {
 
 export interface ConnectorDependencies {
   runBina: typeof runBinaAgencyConnector;
+  crawlWebsite?: typeof crawlWebsite;
 }
 
 function permissionDisabledResult(): BinaConnectorResult {
@@ -27,7 +28,7 @@ function permissionDisabledResult(): BinaConnectorResult {
 
 export function createConnectorRunner(
   env: NodeJS.ProcessEnv,
-  dependencies: ConnectorDependencies = { runBina: runBinaAgencyConnector },
+  dependencies: ConnectorDependencies = { runBina: runBinaAgencyConnector, crawlWebsite },
 ) {
   return async (source: Source, context: ConnectorContext = { shouldStop: () => false }): Promise<ConnectorResult> => {
     if (source.type === 'test_fixture') {
@@ -36,7 +37,10 @@ export function createConnectorRunner(
     }
     if (source.type === 'bina_agency') {
       const config = readBinaScheduleConfig(env);
-      const permission = () => config.enabled && config.permissionConfirmed;
+      const permission = () => {
+        const current = readBinaScheduleConfig(env);
+        return current.enabled && current.permissionConfirmed;
+      };
       if (!permission()) return permissionDisabledResult();
       return dependencies.runBina({
         startUrl: source.locator,
@@ -47,7 +51,7 @@ export function createConnectorRunner(
         ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
       });
     }
-    if (source.type === 'website' || source.type === 'listing_page') return crawlWebsite({ startUrl: source.locator, maxPages: source.maxPages, maxDepth: source.maxDepth, delayMs: source.delayMs });
+    if (source.type === 'website' || source.type === 'listing_page') throw new Error('Generic web connector is disabled in local-only mode');
     if (source.type.startsWith('instagram') && !env.APIFY_TOKEN) throw new Error('Instagram: Не настроено (APIFY_TOKEN)');
     if (source.type.startsWith('tiktok') && !env.APIFY_TOKEN) throw new Error('TikTok: Не настроено (APIFY_TOKEN)');
     if (source.type === 'google_maps_query' && !env.APIFY_TOKEN) throw new Error('Google Maps Apify: Не настроено (APIFY_TOKEN)');
