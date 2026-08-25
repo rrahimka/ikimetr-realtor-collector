@@ -99,6 +99,47 @@ describe('runBinaAgencyConnector', () => {
     expect(result.pagesChecked).toBe(1);
   });
 
+  it('uses an official robots-declared sitemap instead of relying on search-page listing links', async () => {
+    let searchVisited = false;
+    const sitemapUrl = 'https://bina.azstatic.com/uploads/sitemaps/sitemap_items.xml';
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/baki/alqi-satqi/menziller') searchVisited = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/') ? agencyHtml() : searchHtml([]),
+      });
+    }, {
+      sitemapFetch: () => Promise.resolve(new Response(
+        '<urlset><url><loc>https://www.bina.az/items/301</loc></url></urlset>',
+        { status: 200, headers: { 'content-type': 'application/xml' } },
+      )),
+    }, `User-agent: *\nAllow: /\nSitemap: ${sitemapUrl}\n`);
+
+    expect(searchVisited).toBe(false);
+    expect(result.items).toEqual([expect.objectContaining({ sourceUrl: 'https://bina.az/items/301' })]);
+    expect(result.pagesChecked).toBe(1);
+  });
+
+  it('isolates sitemap parsing failures as markup_changed without visiting the search page', async () => {
+    let searchVisited = false;
+    const sitemapUrl = 'https://bina.azstatic.com/uploads/sitemaps/sitemap_items.xml';
+    const result = await runWithFixture(async (route) => {
+      if (new URL(route.request().url()).pathname === '/baki/alqi-satqi/menziller') searchVisited = true;
+      await route.fulfill({ status: 200, contentType: 'text/html', body: searchHtml([]) });
+    }, {
+      sitemapFetch: () => Promise.resolve(new Response(
+        '<urlset><url><loc>https://bina.az/agents/1</loc></url></urlset>',
+        { status: 200, headers: { 'content-type': 'application/xml' } },
+      )),
+    }, `User-agent: *\nAllow: /\nSitemap: ${sitemapUrl}\n`);
+
+    expect(searchVisited).toBe(false);
+    expect(result.stopReason).toBe('markup_changed');
+    expect(result.outcomes.blocked).toBe(1);
+  });
+
   it('skips a private seller without clicking the phone reveal', async () => {
     const result = await runWithFixture(async (route) => {
       const path = new URL(route.request().url()).pathname;

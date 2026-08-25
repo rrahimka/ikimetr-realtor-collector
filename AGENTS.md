@@ -9,9 +9,12 @@ Guidance for AI agents working in `ikimetr-realtor-collector`.
   fixtures and mocks only** and must never contact real sites or production
   APIs. The dedicated `bina_agency` connector may make real requests only when
   both `BINA_ENABLED=true` and `BINA_PERMISSION_CONFIRMED=true` are set locally.
-- Real `bina_agency` traffic is limited to exact HTTPS hosts `bina.az` and
+- Real listing traffic is limited to exact HTTPS hosts `bina.az` and
   `www.bina.az`, and may retain only publicly displayed business contacts from
-  listings visibly marked `Agentlik`.
+  listings visibly marked `Agentlik`. Read-only sitemap discovery may use only
+  `GET`/`HEAD` on exact host `bina.azstatic.com` under
+  `/uploads/sitemaps/`, and only for URLs declared by Bina robots.txt or an
+  allowed sitemap index; every other resource on that host remains prohibited.
 - Never send messages, add people to groups, collect private sellers, or bypass
   CAPTCHA, robots.txt, authentication, or rate limits. Proxies, stealth,
   fingerprint evasion, hidden/private APIs, and outreach are prohibited.

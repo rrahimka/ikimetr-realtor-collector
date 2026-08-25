@@ -8,6 +8,11 @@ import {
   validateBinaUrl,
   type BinaOutcome,
 } from './bina';
+import {
+  discoverBinaListingUrlsFromSitemaps,
+  extractDeclaredBinaSitemapUrls,
+  type BinaSitemapFetch,
+} from './bina-sitemap';
 import type { ConnectorEvidence, ConnectorResult } from './types';
 
 export type BinaStopReason =
@@ -45,6 +50,7 @@ export interface BinaConnectorOptions {
   observePage?: (page: Page, phase: BinaPagePhase) => Promise<void>;
   onBlockedRequest?: (url: string) => void;
   shouldProcessUrl?: (url: string) => boolean | Promise<boolean>;
+  sitemapFetch?: BinaSitemapFetch;
 }
 
 const ALLOWED_RESOURCE_TYPES = new Set(['document', 'script', 'stylesheet']);
@@ -265,40 +271,55 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
     if (!isAllowedByBinaRobots(robotsText, new URL(startUrl).pathname)) return resultWithStop(baseResult, 'robots_disallowed');
 
     if (!(await options.permission())) return resultWithStop(baseResult, 'permission_disabled');
-    const beforeSearchStop = await options.shouldStop();
-    if (beforeSearchStop) return resultWithStop(baseResult, beforeSearchStop, 'cancelled');
+    const beforeDiscoveryStop = await options.shouldStop();
+    if (beforeDiscoveryStop) return resultWithStop(baseResult, beforeDiscoveryStop, 'cancelled');
 
-    let searchResponse: Response | null;
-    try {
-      searchResponse = await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
-    } catch {
-      if (redirected.url) return resultWithStop(baseResult, 'external_redirect');
-      outcomes.parse_error += 1;
-      return baseResult;
-    }
-    const searchProtection = await detectedProtection(page, searchResponse);
-    if (searchProtection) return resultWithStop(baseResult, searchProtection);
-    try {
-      validateBinaUrl(page.url(), 'search');
-    } catch {
-      return resultWithStop(baseResult, 'external_redirect');
-    }
-
-    let listingUrls: string[];
-    try {
-      const searchHtml = await page.content();
-      const discoveredUrls = discoverBinaListingUrls(searchHtml, page.url(), maxListings);
-      if (discoveredUrls.length === 0) return resultWithStop(baseResult, 'markup_changed');
-      listingUrls = [];
-      for (const listingUrl of discoveredUrls) {
-        if (!options.shouldProcessUrl || await options.shouldProcessUrl(listingUrl)) listingUrls.push(listingUrl);
+    let discoveredUrls: string[];
+    const declaredSitemaps = extractDeclaredBinaSitemapUrls(robotsText);
+    if (declaredSitemaps.length > 0) {
+      try {
+        discoveredUrls = await discoverBinaListingUrlsFromSitemaps({
+          robotsText,
+          maxListings,
+          ...(options.sitemapFetch ? { fetch: options.sitemapFetch } : {}),
+        });
+      } catch {
+        return resultWithStop(baseResult, 'markup_changed');
       }
-      baseResult.estimatedItems = listingUrls.length;
-      const visibleCardCount = await page.locator('[data-bina-listing-card]').count();
-      if (visibleCardCount > 0 && listingUrls.length === 0) return resultWithStop(baseResult, 'markup_changed');
-    } catch {
-      return resultWithStop(baseResult, 'markup_changed');
+      if (discoveredUrls.length === 0) return resultWithStop(baseResult, 'markup_changed');
+    } else {
+      let searchResponse: Response | null;
+      try {
+        searchResponse = await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
+      } catch {
+        if (redirected.url) return resultWithStop(baseResult, 'external_redirect');
+        outcomes.parse_error += 1;
+        return baseResult;
+      }
+      const searchProtection = await detectedProtection(page, searchResponse);
+      if (searchProtection) return resultWithStop(baseResult, searchProtection);
+      try {
+        validateBinaUrl(page.url(), 'search');
+      } catch {
+        return resultWithStop(baseResult, 'external_redirect');
+      }
+      try {
+        const searchHtml = await page.content();
+        discoveredUrls = discoverBinaListingUrls(searchHtml, page.url(), maxListings);
+        if (discoveredUrls.length === 0) return resultWithStop(baseResult, 'markup_changed');
+      } catch {
+        return resultWithStop(baseResult, 'markup_changed');
+      }
     }
+
+    if (!(await options.permission())) return resultWithStop(baseResult, 'permission_disabled');
+    const afterDiscoveryStop = await options.shouldStop();
+    if (afterDiscoveryStop) return resultWithStop(baseResult, afterDiscoveryStop, 'cancelled');
+    const listingUrls: string[] = [];
+    for (const listingUrl of discoveredUrls) {
+      if (!options.shouldProcessUrl || await options.shouldProcessUrl(listingUrl)) listingUrls.push(listingUrl);
+    }
+    baseResult.estimatedItems = listingUrls.length;
 
     let consecutiveTechnicalErrors = 0;
     for (const listingUrl of listingUrls) {
