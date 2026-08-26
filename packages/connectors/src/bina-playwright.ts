@@ -188,8 +188,7 @@ async function findSellerByTypeLabel(page: Page): Promise<{ card: Locator; revea
         .getByRole('button', { name: PHONE_BUTTON_NAME, exact: true })
         .or(scope.getByRole('link', { name: PHONE_BUTTON_NAME, exact: true }));
       const textReveals = scope.locator(REVEAL_TEXT_SELECTOR);
-      const revealCandidates = roleReveals.count().then(async (roleCount) => (roleCount > 0 ? roleReveals : textReveals));
-      const reveals = await revealCandidates;
+      const reveals = (await roleReveals.count()) > 0 ? roleReveals : textReveals;
       for (let revealIndex = 0; revealIndex < await reveals.count(); revealIndex += 1) {
         const reveal = reveals.nth(revealIndex);
         if (await reveal.isVisible().catch(() => false)) return { card: scope, reveal, sellerType };
