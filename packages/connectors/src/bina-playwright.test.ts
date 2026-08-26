@@ -123,6 +123,40 @@ describe('runBinaAgencyConnector', () => {
     expect(result.items[0]).toMatchObject({ rawPhone: '+994501234567' });
   });
 
+  it('stops as protection when a listing serves a Cloudflare block interstitial', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/')
+          ? '<!doctype html><html><head><title>Attention Required! | Cloudflare</title></head><body>Sorry, you have been blocked. You are unable to access bina.az</body></html>'
+          : searchHtml([401]),
+      });
+    });
+
+    expect(result.stopReason).toBe('protection_interstitial');
+    expect(result.outcomes.blocked).toBe(1);
+    expect(result.outcomes.accepted).toBe(0);
+    expect(result.outcomes.private_seller).toBe(0);
+  });
+
+  it('stops as captcha when a listing serves a Cloudflare managed challenge', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/')
+          ? '<!doctype html><html><head><title>Just a moment...</title></head><body>Verify you are human by completing the action.</body></html>'
+          : searchHtml([402]),
+      });
+    });
+
+    expect(result.stopReason).toBe('captcha');
+    expect(result.outcomes.blocked).toBe(1);
+  });
+
   it('uses an official robots-declared sitemap instead of relying on search-page listing links', async () => {
     let searchVisited = false;
     const sitemapUrl = 'https://bina.azstatic.com/uploads/sitemaps/sitemap_items.xml';

@@ -23,6 +23,7 @@ export type BinaStopReason =
   | 'http_403'
   | 'http_429'
   | 'captcha'
+  | 'protection_interstitial'
   | 'login_required'
   | 'external_redirect'
   | 'kill_switch'
@@ -142,7 +143,8 @@ async function detectedProtection(page: Page, response: Response | null): Promis
   if (response?.status() === 403) return 'http_403';
   if (response?.status() === 429) return 'http_429';
   const bodyText = await page.locator('body').innerText().catch(() => '');
-  if (/\bcaptcha\b|robot olmadığınızı|robot olmadiginizi/iu.test(bodyText)) return 'captcha';
+  if (/\bcaptcha\b|robot olmadığınızı|robot olmadiginizi|verify you are human|just a moment/iu.test(bodyText)) return 'captcha';
+  if (/sorry, you have been blocked|attention required/iu.test(bodyText)) return 'protection_interstitial';
   const passwordVisible = await page.locator('input[type="password"]:visible').count().catch(() => 0);
   if (passwordVisible > 0 || /\/(?:login|signin)(?:\/|$)/iu.test(page.url())) return 'login_required';
   return undefined;
