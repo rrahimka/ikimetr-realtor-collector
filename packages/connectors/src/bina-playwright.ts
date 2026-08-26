@@ -157,6 +157,44 @@ async function visibleText(container: Page | Locator, selector: string): Promise
   return text === '' ? undefined : text;
 }
 
+const SELLER_TYPE_LABEL_SELECTOR = ':text-matches("^(Mülkiyyətçi|Sahibindən|Agentlik|Vasitəçi)$", "u")';
+
+async function findSellerByTypeLabel(page: Page): Promise<{ card: Locator; reveal?: Locator; sellerType: ExplicitBinaSellerType } | undefined> {
+  const labels = page.locator(SELLER_TYPE_LABEL_SELECTOR);
+  const total = Math.min(await labels.count(), 8);
+  for (let index = 0; index < total; index += 1) {
+    const label = labels.nth(index);
+    if (!await label.isVisible().catch(() => false)) continue;
+    if (await label.locator('xpath=ancestor-or-self::*[contains(concat(" ", normalize-space(@class), " "), " item-card ")]').count() > 0) continue;
+    let sellerType: ExplicitBinaSellerType;
+    try {
+      sellerType = detectExplicitBinaSellerType((await label.innerText()).trim());
+    } catch {
+      continue;
+    }
+    if (sellerType === 'unknown') continue;
+    let scope = label;
+    for (let depth = 0; depth < 5; depth += 1) {
+      scope = scope.locator('xpath=..');
+      if (!(await scope.isVisible().catch(() => false))) break;
+      if (sellerType === 'owner') {
+        return { card: scope, sellerType };
+      }
+      const reveals = scope
+        .getByRole('button', { name: PHONE_BUTTON_NAME, exact: true })
+        .or(scope.getByRole('link', { name: PHONE_BUTTON_NAME, exact: true }));
+      for (let revealIndex = 0; revealIndex < await reveals.count(); revealIndex += 1) {
+        const reveal = reveals.nth(revealIndex);
+        if (await reveal.isVisible().catch(() => false)) return { card: scope, reveal, sellerType };
+      }
+    }
+    if (sellerType === 'agency' || sellerType === 'agent') {
+      return { card: label.locator('xpath=..'), sellerType };
+    }
+  }
+  return undefined;
+}
+
 async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: Locator; sellerType: ExplicitBinaSellerType } | undefined> {
   const cards = page.locator(SELLER_CARD_SELECTOR);
   const cardCount = await cards.count();
@@ -192,6 +230,9 @@ async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: L
     }
   }
 
+  const semanticSeller = await findSellerByTypeLabel(page);
+  if (semanticSeller) return semanticSeller;
+
   // Check whole page for owner marker if no seller card was matched
   const body = page.locator('body');
   if (await body.count() > 0) {
@@ -214,6 +255,11 @@ async function readVisiblePhone(container: Locator): Promise<string | undefined>
   for (let index = 0; index < await candidates.count(); index += 1) {
     const text = (await candidates.nth(index).innerText()).trim();
     if (text !== '') return text;
+  }
+  const lines = (await container.innerText().catch(() => '')).split(/\r?\n/u);
+  for (const line of lines) {
+    const candidate = normalizeVisibleBinaPhone(line.trim());
+    if (candidate) return candidate;
   }
   return undefined;
 }

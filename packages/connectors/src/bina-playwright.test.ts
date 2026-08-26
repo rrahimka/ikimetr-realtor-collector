@@ -34,6 +34,37 @@ function privateSellerHtml(): string {
   return '<!doctype html><html><head><meta charset="utf-8"></head><body><strong>Şəxsi elan</strong><button>Nömrəni göstər</button></body></html>';
 }
 
+function realDomHtml(options: { sellerLabel: string; name: string; phone?: string; decoy?: boolean; revealAsText?: boolean }): string {
+  const phone = options.phone ?? '+994 50 123 45 67';
+  const masked = `${phone.slice(0, 4)} •••`;
+  const reveal = options.revealAsText
+    ? `<button type="button" onclick="this.nextElementSibling.hidden=false; this.hidden=true">Nömrəni göstər</button><strong data-tel-text hidden>${phone}</strong>`
+    : `<button type="button" onclick="const a=this.parentElement.querySelector('a[href^=\\'tel:\\']'); a.hidden=false; this.textContent='${masked}'">Nömrəni göstər</button><a href="tel:${phone}" hidden>${phone}</a>`;
+  return `<!doctype html><html><head><meta charset="utf-8"></head><body>
+    <div class="layout">
+      <h1>Satılır 2 otaqlı yeni tikili — Nərimanov</h1>
+      <div class="content">
+        <div class="params">495 000 AZN 100 m² 8/15 mərtəbə</div>
+        <div class="sidebar-wrapper">
+          <div class="seller-box">
+            <div class="name-row"><span>${options.name}</span></div>
+            <span class="type-label">${options.sellerLabel}</span>
+            ${reveal}
+          </div>
+        </div>
+      </div>
+      ${options.decoy ? `
+      <div class="similar">
+        <div class="item-card">
+          <span>Agentlik</span>
+          <a href="/items/999">Similar listing</a>
+          <button type="button" onclick="void 0">Nömrəni göstər</button>
+        </div>
+      </div>` : ''}
+    </div>
+  </body></html>`;
+}
+
 type Fixture = (route: Route) => Promise<void> | void;
 
 async function runWithFixture(
@@ -155,6 +186,62 @@ describe('runBinaAgencyConnector', () => {
 
     expect(result.stopReason).toBe('captcha');
     expect(result.outcomes.blocked).toBe(1);
+  });
+
+  it('skips a real-DOM private listing without clicking its phone control', async () => {
+    let clicked = false;
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/') ? realDomHtml({ sellerLabel: 'Mülkiyyətçi', name: 'Zaur M.' }) : searchHtml([501]),
+      });
+    }, {
+      observePage: async (page, phase) => {
+        if (phase === 'after_phone_reveal') {
+          clicked = (await page.locator('a[href^="tel:"]:visible').count()) > 0;
+        }
+      },
+    });
+
+    expect(clicked).toBe(false);
+    expect(result.outcomes.private_seller).toBe(1);
+    expect(result.outcomes.accepted).toBe(0);
+  });
+
+  it('accepts a real-DOM agency listing and ignores similar-listing Agentlik decoys', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/')
+          ? realDomHtml({ sellerLabel: 'Agentlik', name: 'Rieltor Group', phone: '+994 12 345 67 89', decoy: true })
+          : searchHtml([502]),
+      });
+    });
+
+    expect(result.outcomes.private_seller).toBe(0);
+    expect(result.outcomes.accepted).toBe(1);
+    expect(result.items.length).toBe(1);
+    expect(result.items[0]).toMatchObject({ rawPhone: '+994123456789' });
+  });
+
+  it('accepts a real-DOM agency listing whose phone is revealed as plain text', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/')
+          ? realDomHtml({ sellerLabel: 'Vasitəçi', name: 'Samir R.', phone: '+994 55 443 32 21', revealAsText: true })
+          : searchHtml([503]),
+      });
+    });
+
+    expect(result.outcomes.accepted).toBe(1);
+    expect(result.items[0]).toMatchObject({ rawPhone: '+994554433221' });
   });
 
   it('uses an official robots-declared sitemap instead of relying on search-page listing links', async () => {
