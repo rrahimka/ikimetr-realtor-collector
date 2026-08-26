@@ -5,6 +5,7 @@ import {
   discoverBinaListingUrls,
   hasVisibleAgencyMarker,
   isExplicitOwnerMarker,
+  isGenericBinaOwnerLabel,
   maskPhone,
   normalizeVisibleBinaPhone,
   validateBinaUrl,
@@ -76,6 +77,15 @@ describe('visible agency and phone rules', () => {
   it.each(['Mülkiyyətçi', 'Sahibindən', 'Şəxsi', 'Собственник'])('recognizes owner markers in %s', (text) => {
     expect(detectExplicitBinaSellerType(text)).toBe('owner');
     expect(isExplicitOwnerMarker(text)).toBe(true);
+  });
+
+  it.each(['Elanın sahibi', 'Elanın sahibi:', 'Əlanın sahibi', '  elanın sahibi  '])('treats the generic UI label %s as not an owner marker', (text) => {
+    expect(isGenericBinaOwnerLabel(text)).toBe(true);
+    expect(isExplicitOwnerMarker(text)).toBe(false);
+  });
+
+  it.each(['Mülkiyyətçi', 'Sahibindən', 'Ev sahibi ilə', 'Bakı Emlak Agentlik', ''])('keeps real seller text %s out of the generic label rule', (text) => {
+    expect(isGenericBinaOwnerLabel(text)).toBe(false);
   });
 
 

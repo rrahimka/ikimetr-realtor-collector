@@ -88,8 +88,15 @@ export function normalizeBinaText(text: string): string {
     .replace(/[şs]/gu, 's');
 }
 
+const GENERIC_OWNER_LABEL_RE = /^elan(?:i)?n\s+sahibi:?$/u;
+
+export function isGenericBinaOwnerLabel(text: string): boolean {
+  return GENERIC_OWNER_LABEL_RE.test(normalizeBinaText(text).trim());
+}
+
 export function detectExplicitBinaSellerType(text: string): ExplicitBinaSellerType {
   const normalized = normalizeBinaText(text);
+  if (GENERIC_OWNER_LABEL_RE.test(normalized.trim())) return 'unknown';
 
   if (/(?:^|[^\p{L}])(?:agentlik|emlak agentliyi|agency|агентство)(?:$|[^\p{L}])/u.test(normalized)) {
     return 'agency';

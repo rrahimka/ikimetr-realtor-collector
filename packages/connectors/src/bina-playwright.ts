@@ -3,6 +3,7 @@ import { chromium, type Browser, type Locator, type Page, type Response, type Ro
 import {
   BINA_OUTCOMES,
   detectExplicitBinaSellerType,
+  isGenericBinaOwnerLabel,
   discoverBinaListingUrls,
   normalizeVisibleBinaPhone,
   validateBinaUrl,
@@ -165,6 +166,7 @@ async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: L
 
     let sellerType: ExplicitBinaSellerType = 'unknown';
     for (const line of lines) {
+      if (isGenericBinaOwnerLabel(line)) continue;
       const detected = detectExplicitBinaSellerType(line);
       if (detected !== 'unknown') {
         sellerType = detected;
@@ -194,6 +196,7 @@ async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: L
     const bodyText = await body.innerText().catch(() => '');
     const lines = bodyText.split(/\r?\n/u);
     for (const line of lines) {
+      if (isGenericBinaOwnerLabel(line)) continue;
       if (detectExplicitBinaSellerType(line) === 'owner') {
         return { card: body, sellerType: 'owner' };
       }

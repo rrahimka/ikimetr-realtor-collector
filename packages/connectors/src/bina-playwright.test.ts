@@ -99,6 +99,30 @@ describe('runBinaAgencyConnector', () => {
     expect(result.pagesChecked).toBe(1);
   });
 
+  it('does not misclassify the generic Elanın sahibi UI label as a private owner', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/')
+          ? `<!doctype html><html><head><meta charset="utf-8"></head><body>
+             <div class="product-owner">
+               <div class="product-owner__label">Elanın sahibi</div>
+               <strong>Agentlik</strong>
+               <button type="button" onclick="this.parentElement.querySelector('[data-bina-phone]').hidden=false">Nömrəni göstər</button>
+               <a data-bina-phone hidden href="tel:+994 50 123 45 67">+994 50 123 45 67</a>
+             </div>
+           </body></html>`
+          : searchHtml([301]),
+      });
+    });
+
+    expect(result.outcomes.private_seller).toBe(0);
+    expect(result.outcomes.accepted).toBe(1);
+    expect(result.items[0]).toMatchObject({ rawPhone: '+994501234567' });
+  });
+
   it('uses an official robots-declared sitemap instead of relying on search-page listing links', async () => {
     let searchVisited = false;
     const sitemapUrl = 'https://bina.azstatic.com/uploads/sitemaps/sitemap_items.xml';
