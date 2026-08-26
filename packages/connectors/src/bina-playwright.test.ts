@@ -693,4 +693,21 @@ describe('runBinaAgencyConnector', () => {
 
     expect(browser?.isConnected()).toBe(false);
   });
+
+  it('notifies onListingChecked callback for checked listing outcomes', async () => {
+    const events: Array<{ url: string; outcome: string }> = [];
+    await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/items/101') await route.fulfill({ status: 200, contentType: 'text/html', body: agencyHtml() });
+      else if (path === '/items/102') await route.fulfill({ status: 200, contentType: 'text/html', body: privateSellerHtml() });
+      else await route.fulfill({ status: 200, contentType: 'text/html', body: searchHtml([101, 102]) });
+    }, {
+      onListingChecked: (url, details) => { events.push({ url, outcome: details.outcome }); },
+    });
+
+    expect(events).toEqual([
+      { url: 'https://bina.az/items/101', outcome: 'accepted' },
+      { url: 'https://bina.az/items/102', outcome: 'private_seller' },
+    ]);
+  });
 });

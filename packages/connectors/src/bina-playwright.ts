@@ -55,6 +55,10 @@ export interface BinaConnectorOptions {
   observePage?: (page: Page, phase: BinaPagePhase) => Promise<void>;
   onBlockedRequest?: (url: string) => void;
   onTechnicalError?: (summary: string) => void;
+  onListingChecked?: (
+    url: string,
+    details: { outcome: BinaOutcome; sellerType?: ExplicitBinaSellerType; phone?: string; fingerprint?: string },
+  ) => void | Promise<void>;
   shouldProcessUrl?: (url: string) => boolean | Promise<boolean>;
   sitemapFetch?: BinaSitemapFetch;
 }
@@ -184,9 +188,19 @@ export const TAG_SELLER_CARDS_SCRIPT = `
       if (scope.closest('.item-card') !== null) break;
       var reveal = null;
       if (!isOwner) {
-        var inner = scope.querySelectorAll('button, a, div, span');
+        var inner = scope.querySelectorAll('[data-stat="product-call-btn"], [data-cy="bottom-phone"], button, a, div, span');
         for (var k = 0; k < inner.length; k += 1) {
-          if (exactText(inner[k]) === arg.revealText && inner[k].closest('.item-card') === null) { reveal = inner[k]; break; }
+          var item = inner[k];
+          if (item.closest('.item-card') !== null) continue;
+          if (item.getAttribute('data-stat') === 'product-call-btn' || item.getAttribute('data-cy') === 'bottom-phone') {
+            reveal = item;
+            break;
+          }
+          var t = exactText(item);
+          if (t === arg.revealText || t.indexOf(arg.revealText) === 0 || t === 'Zəng et' || t.indexOf('Zəng et') === 0) {
+            reveal = item.closest('[data-stat="product-call-btn"]') || item;
+            break;
+          }
         }
       }
       if (!isOwner && reveal === null) { scope = scope.parentElement; continue; }
@@ -254,7 +268,11 @@ async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: L
         const reveal = reveals.nth(revealIndex);
         if (await reveal.isVisible()) return { card, reveal, sellerType };
       }
-      return { card, sellerType };
+      const parentReveals = card.locator('xpath=..').locator('[data-stat="product-call-btn"], [data-cy="bottom-phone"]');
+      for (let revealIndex = 0; revealIndex < await parentReveals.count(); revealIndex += 1) {
+        const reveal = parentReveals.nth(revealIndex);
+        if (await reveal.isVisible()) return { card: card.locator('xpath=..'), reveal, sellerType };
+      }
     }
   }
 
@@ -280,10 +298,16 @@ async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: L
 
 
 async function readVisiblePhone(container: Locator): Promise<string | undefined> {
-  const candidates = container.locator('[data-bina-phone]:visible, a[href^="tel:"]:visible');
-  for (let index = 0; index < await candidates.count(); index += 1) {
-    const text = (await candidates.nth(index).innerText()).trim();
-    if (text !== '') return text;
+  const candidates = container.locator('[data-bina-phone], a[href^="tel:"]');
+  const count = await candidates.count().catch(() => 0);
+  for (let index = 0; index < count; index += 1) {
+    const candidate = candidates.nth(index);
+    if (await candidate.isVisible().catch(() => false)) {
+      const text = (await candidate.innerText().catch(() => '')).trim();
+      if (text !== '') return text;
+      const href = (await candidate.getAttribute('href').catch(() => '')) ?? '';
+      if (href.startsWith('tel:')) return href.replace(/^tel:/u, '').trim();
+    }
   }
   const lines = (await container.innerText().catch(() => '')).split(/\r?\n/u);
   for (const line of lines) {
@@ -403,6 +427,7 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
           robotsText,
           maxListings,
           ...(options.sitemapFetch ? { fetch: options.sitemapFetch } : {}),
+          ...(options.shouldProcessUrl ? { shouldProcessUrl: options.shouldProcessUrl } : {}),
         });
       } catch {
         return resultWithStop(baseResult, 'markup_changed');
@@ -460,6 +485,7 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         if (redirected.url) return resultWithStop(baseResult, 'external_redirect');
         outcomes.parse_error += 1;
         consecutiveTechnicalErrors += 1;
+        await options.onListingChecked?.(listingUrl, { outcome: 'parse_error' });
         if (consecutiveTechnicalErrors >= 5) return resultWithStop(baseResult, 'technical_error_limit');
         continue;
       }
@@ -467,11 +493,13 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
       if (response?.status() === 404 || response?.status() === 410) {
         outcomes.page_removed += 1;
         consecutiveTechnicalErrors = 0;
+        await options.onListingChecked?.(listingUrl, { outcome: 'page_removed' });
         continue;
       }
       if (response && response.status() >= 500) {
         outcomes.parse_error += 1;
         consecutiveTechnicalErrors += 1;
+        await options.onListingChecked?.(listingUrl, { outcome: 'parse_error' });
         if (consecutiveTechnicalErrors >= 5) return resultWithStop(baseResult, 'technical_error_limit');
         continue;
       }
@@ -488,17 +516,19 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         if (!seller || seller.sellerType === 'owner') {
           outcomes.private_seller += 1;
           consecutiveTechnicalErrors = 0;
+          await options.onListingChecked?.(listingUrl, { outcome: 'private_seller', sellerType: seller?.sellerType ?? 'owner' });
           continue;
         }
         if (!seller.reveal) {
           outcomes.missing_phone += 1;
           consecutiveTechnicalErrors = 0;
+          await options.onListingChecked?.(listingUrl, { outcome: 'missing_phone', sellerType: seller.sellerType });
           continue;
         }
         if (await readVisiblePhone(seller.card)) return resultWithStop(baseResult, 'markup_changed');
 
         await options.observePage?.(page, 'before_phone_reveal');
-        await seller.reveal.click();
+        await seller.reveal.click({ timeout: 5000 }).catch(() => {});
         await options.observePage?.(page, 'after_phone_reveal');
         let visiblePhone = await readVisiblePhone(seller.card);
         for (let poll = 0; !visiblePhone && poll < 8; poll += 1) {
@@ -508,19 +538,21 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         if (!visiblePhone) {
           outcomes.missing_phone += 1;
           consecutiveTechnicalErrors = 0;
+          await options.onListingChecked?.(listingUrl, { outcome: 'missing_phone', sellerType: seller.sellerType });
           continue;
         }
         const phone = normalizeVisibleBinaPhone(visiblePhone);
         if (!phone) {
           outcomes.invalid_phone += 1;
           consecutiveTechnicalErrors = 0;
+          await options.onListingChecked?.(listingUrl, { outcome: 'invalid_phone', sellerType: seller.sellerType });
           continue;
         }
 
         const canonicalUrl = validateBinaUrl(page.url(), 'listing');
-        const name = await visibleText(page, '[data-bina-name], h1');
-        const agency = await visibleText(seller.card, '[data-bina-agency]');
-        const location = await visibleText(page, '[data-bina-location]');
+        const name = await visibleText(page, '[data-bina-name], [data-cy="owner-info__content"] span, h1');
+        const agency = await visibleText(seller.card, '[data-bina-agency], [data-cy="agency-info"] span');
+        const location = await visibleText(page, '[data-bina-location], [data-stat="agency-address"], [data-cy="item_map"]');
         baseResult.items.push(listingEvidence(canonicalUrl, phone, {
           ...(name ? { name } : {}),
           ...(agency ? { agency } : {}),
@@ -529,10 +561,12 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         }));
         outcomes.accepted += 1;
         consecutiveTechnicalErrors = 0;
+        await options.onListingChecked?.(canonicalUrl, { outcome: 'accepted', sellerType: seller.sellerType, phone });
       } catch (error) {
         options.onTechnicalError?.(error instanceof Error ? `${error.message.split('\n')[0] ?? error.message}`.slice(0, 200) : 'unknown listing error');
         outcomes.parse_error += 1;
         consecutiveTechnicalErrors += 1;
+        await options.onListingChecked?.(listingUrl, { outcome: 'parse_error' });
         if (consecutiveTechnicalErrors >= 5) return resultWithStop(baseResult, 'technical_error_limit');
       }
 

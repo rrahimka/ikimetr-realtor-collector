@@ -3,8 +3,10 @@ import {
   crawlWebsite,
   runBinaAgencyConnector,
   type BinaConnectorResult,
+  type BinaOutcome,
   type BinaStopRequest,
   type ConnectorResult,
+  type ExplicitBinaSellerType,
 } from '@ikimetr/connectors';
 import type { SourceInput } from '@ikimetr/core';
 import { readBinaScheduleConfig } from './scheduler';
@@ -14,6 +16,10 @@ type Source = SourceInput & { id: number };
 export interface ConnectorContext {
   shouldStop: () => BinaStopRequest | Promise<BinaStopRequest>;
   shouldProcessUrl?: (url: string) => boolean | Promise<boolean>;
+  onListingChecked?: (
+    url: string,
+    details: { outcome: BinaOutcome; sellerType?: ExplicitBinaSellerType; phone?: string; fingerprint?: string },
+  ) => void | Promise<void>;
 }
 
 export interface ConnectorDependencies {
@@ -58,6 +64,7 @@ export function createConnectorRunner(
         permission,
         shouldStop: context.shouldStop,
         ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        ...(context.onListingChecked ? { onListingChecked: context.onListingChecked } : {}),
       });
 
     }

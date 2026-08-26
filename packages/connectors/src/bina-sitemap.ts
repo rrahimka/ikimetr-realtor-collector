@@ -21,6 +21,7 @@ export interface BinaSitemapDiscoveryOptions {
   maxDocuments?: number;
   timeoutMs?: number;
   onListingDiscovered?: (url: string) => boolean | Promise<boolean>;
+  shouldProcessUrl?: (url: string) => boolean | Promise<boolean>;
 }
 
 
@@ -101,7 +102,7 @@ async function parseSitemap(
   response: Response,
   maxBytes: number,
   maxLocs: number,
-  onLoc: (kind: SitemapKind, value: string) => boolean,
+  onLoc: (kind: SitemapKind, value: string) => boolean | Promise<boolean>,
 ): Promise<void> {
   const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ?? '';
   if (contentType !== 'application/xml' && contentType !== 'text/xml' && !contentType.endsWith('+xml')) {
@@ -122,7 +123,7 @@ async function parseSitemap(
   let kind: SitemapKind | undefined;
   let stopped = false;
 
-  const consume = (text: string) => {
+  const consume = async (text: string) => {
     const guarded = guardTail + text;
     if (/<!\s*(?:DOCTYPE|ENTITY)\b/iu.test(guarded)) throw new Error('Bina sitemap XML is not allowed');
     guardTail = guarded.slice(-32);
@@ -141,7 +142,7 @@ async function parseSitemap(
       locs += 1;
       if (locs > maxLocs) throw new Error('Bina sitemap exceeds the loc limit');
       processedThrough = locPattern.lastIndex;
-      if (onLoc(kind, decodeXmlText(match[1]!).trim())) {
+      if (await onLoc(kind, decodeXmlText(match[1]!).trim())) {
         stopped = true;
         break;
       }
@@ -158,9 +159,9 @@ async function parseSitemap(
       if (chunk.done) break;
       bytes += chunk.value.byteLength;
       if (bytes > maxBytes) throw new Error('Bina sitemap exceeds the byte limit');
-      consume(decoder.decode(chunk.value, { stream: true }));
+      await consume(decoder.decode(chunk.value, { stream: true }));
     }
-    if (!stopped) consume(decoder.decode());
+    if (!stopped) await consume(decoder.decode());
     if (!kind) throw new Error('Bina sitemap root element is not supported');
   } finally {
     if (stopped) await reader.cancel().catch(() => undefined);
@@ -224,7 +225,7 @@ export async function discoverBinaListingUrlsFromSitemaps(
   const timeoutMs = Math.max(1, Math.trunc(options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
   const declaredUrls = new Set(initialUrls);
   const queued = new Set(initialUrls);
-  const queue = [...initialUrls];
+  const queue = [...initialUrls].sort((a, b) => (b.includes('item') ? 1 : 0) - (a.includes('item') ? 1 : 0));
   const listings: string[] = [];
   const seenListings = new Set<string>();
   let documents = 0;
@@ -234,24 +235,29 @@ export async function discoverBinaListingUrlsFromSitemaps(
     const sitemapUrl = queue.shift()!;
     documents += 1;
     const response = await fetchSitemap(sitemapUrl, declaredUrls, fetcher, timeoutMs);
-    await parseSitemap(response, maxBytes, maxLocs, (kind, value) => {
+    await parseSitemap(response, maxBytes, maxLocs, async (kind, value) => {
       if (kind === 'sitemapindex') {
         const child = canonicalAllowedSitemapUrl(value);
         if (child && !queued.has(child)) {
           declaredUrls.add(child);
           queued.add(child);
           queue.push(child);
+          queue.sort((a, b) => b.localeCompare(a));
         }
         return false;
       }
+      if (!value.includes('/items/')) return false;
       try {
         const listing = validateBinaUrl(value, 'listing');
         if (!seenListings.has(listing)) {
           seenListings.add(listing);
-          listings.push(listing);
-          if (options.onListingDiscovered) {
-            const stop = options.onListingDiscovered(listing);
-            if (stop) return true;
+          const shouldProcess = options.shouldProcessUrl ? await options.shouldProcessUrl(listing) : true;
+          if (shouldProcess) {
+            listings.push(listing);
+            if (options.onListingDiscovered) {
+              const stop = await options.onListingDiscovered(listing);
+              if (stop) return true;
+            }
           }
         }
       } catch {

@@ -92,7 +92,7 @@ function stopChild(child) {
 function waitForWorkerReady(child) {
   return new Promise((resolve, reject) => {
     let output = '';
-    const timer = setTimeout(() => reject(new Error('Worker did not become ready within 60s')), 60_000);
+    const timer = setTimeout(() => reject(new Error('Worker did not become ready within 120s')), 120_000);
     /**
      * @param {Buffer} chunk
      */

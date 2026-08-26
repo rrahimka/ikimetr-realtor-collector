@@ -1,5 +1,12 @@
 import { classifyEvidence, extractPhones, normalizePhone } from '@ikimetr/core';
-import { BINA_OUTCOMES, type BinaConnectorResult, type BinaStopRequest, type ConnectorResult } from '@ikimetr/connectors';
+import {
+  BINA_OUTCOMES,
+  type BinaConnectorResult,
+  type BinaOutcome,
+  type BinaStopRequest,
+  type ConnectorResult,
+  type ExplicitBinaSellerType,
+} from '@ikimetr/connectors';
 import type { createRepositories } from '@ikimetr/database';
 import type { ConnectorContext } from './connectors';
 
@@ -52,10 +59,38 @@ export async function processRun(
     return;
   }
 
+  const onListingChecked = (
+    url: string,
+    details: { outcome: BinaOutcome; sellerType?: ExplicitBinaSellerType; phone?: string; fingerprint?: string },
+  ) => {
+    if (source.type !== 'bina_agency' || !repos.binaListings) return;
+    const statusMap: Record<BinaOutcome, 'checked' | 'skipped_owner' | 'failed' | 'removed' | undefined> = {
+      accepted: 'checked',
+      private_seller: 'skipped_owner',
+      page_removed: 'removed',
+      missing_phone: 'failed',
+      invalid_phone: 'failed',
+      parse_error: 'failed',
+      duplicate: 'checked',
+      blocked: undefined,
+      cancelled: undefined,
+    };
+    const status = statusMap[details.outcome];
+    if (status) {
+      repos.binaListings.markChecked(source.id, url, {
+        sellerType: details.sellerType ?? 'unknown',
+        phone: details.phone ?? null,
+        fingerprint: details.fingerprint ?? null,
+        status,
+      });
+    }
+  };
+
   const recheckSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000).toISOString();
   const result = await connector(source, {
     shouldStop: () => stopRequest(repos, run.id, source.id),
     shouldProcessUrl: (url) => !repos.evidence.wasUrlSeenSince(source.id, url, recheckSince) && !repos.binaListings?.wasUrlCheckedRecently(source.id, url, recheckSince),
+    onListingChecked,
   });
   const binaResult = isBinaResult(source, result) ? result : undefined;
   const terminalStop = binaResult?.stopReason;

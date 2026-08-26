@@ -106,4 +106,19 @@ describe('worker',()=>{
     expect(recentAllowed).toBe(false);
     expect(oldAllowed).toBe(true);
   });
+
+  it('records bina_listings states via onListingChecked callback during worker run', async () => {
+    db = createDatabase(':memory:');
+    const repos = createRepositories(db);
+    const source = repos.sources.create({ name: 'Bina', type: 'bina_agency', locator: 'https://bina.az/search', language: 'AZ', maxPages: 5, maxDepth: 0, delayMs: 10000, enabled: true, killSwitch: false });
+    repos.runs.enqueue(source.id);
+    await runWorkerOnce(repos, async (_source, context) => {
+      await context?.onListingChecked?.('https://bina.az/items/901', { outcome: 'private_seller', sellerType: 'owner' });
+      await context?.onListingChecked?.('https://bina.az/items/902', { outcome: 'page_removed' });
+      return { items: [], pagesChecked: 2, estimatedItems: 2, outcomes: { accepted: 0, duplicate: 0, private_seller: 1, missing_phone: 0, invalid_phone: 0, page_removed: 1, blocked: 0, parse_error: 0, cancelled: 0 } };
+    });
+    const stats = repos.binaListings.stats(source.id);
+    expect(stats.privateSkippedCount).toBe(1);
+    expect(stats.totalChecked).toBe(2);
+  });
 });

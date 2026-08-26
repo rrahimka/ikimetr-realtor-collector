@@ -181,4 +181,25 @@ describe('discoverBinaListingUrlsFromSitemaps', () => {
       'https://bina.az/items/203',
     ]);
   });
+
+  it('filters discovered sitemap listings with shouldProcessUrl', async () => {
+    const fetch: BinaSitemapFetch = () => Promise.resolve(xmlResponse([
+      '<urlset>',
+      '<url><loc>https://bina.az/items/201</loc></url>',
+      '<url><loc>https://bina.az/items/202</loc></url>',
+      '<url><loc>https://bina.az/items/203</loc></url>',
+      '</urlset>',
+    ].join('')));
+
+    const urls = await discoverBinaListingUrlsFromSitemaps({
+      robotsText: `Sitemap: ${indexUrl}`,
+      maxListings: 2,
+      shouldProcessUrl: (url) => url !== 'https://bina.az/items/201',
+      fetch,
+    });
+    expect(urls).toEqual([
+      'https://bina.az/items/202',
+      'https://bina.az/items/203',
+    ]);
+  });
 });

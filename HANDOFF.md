@@ -1,47 +1,36 @@
-# Handoff — 2026-08-26 Bina live-acceptance debugging checkpoint
+# Handoff — 2026-08-26 Bina live-acceptance & full verification checkpoint
 
 ## Repository state
 
-- Branch: `feature/bina-agency-pilot`, HEAD `a65e153`, working tree clean.
-- 250 unit/integration tests, typecheck, lint, build, and 2 smoke scenarios
-  pass at HEAD (verified twice for the multi-source commit `76f512e`).
+- Branch: `feature/bina-agency-pilot`
+- Verification suite (all exit 0):
+  - `pnpm test` — 253/253 tests pass across 24 test suites
+  - `pnpm typecheck` — clean (5 of 5 workspace packages)
+  - `pnpm lint` — clean
+  - `pnpm build` — clean Next.js app + worker builds
+  - `pnpm test:smoke` — 2/2 end-to-end scenarios pass (`collector pipeline: login → fixture source → run → worker → contact → CSV` and `language toggle and CSV import report`)
+  - `git diff --check` — clean
 
-## Fixed this session
+## Completed in this session
 
-1. Multi-source work committed: tap/arenda/stop connectors, ESM test import,
-   agency-name extraction, `exactOptionalPropertyTypes` evidence construction
-   (`76f512e`).
-2. Live-run forensics (runs 43–82):
-   - «Elanın sahibi» UI label misclassified every real listing as a private
-     seller (`1a0e1ab`).
-   - Cloudflare block/challenge interstitials (HTTP 200) were silently counted
-     as private_seller → false "completed"; now detected as
-     `protection_interstitial`/captcha with blocked+cooldown (`327d5d0`).
-   - Current bina.az DOM has no `product-owner`/`data-bina-*` markers; the
-     seller card is now found semantically by exact type label
-     («Mülkiyyətçi», «Sahibindən», «Agentlik», «Vasitəçi …»), excluding
-     `.item-card` decoys, with tag-agnostic reveal control «Nömrəni göstər»
-     (`cee0b79`, `d9e7653`) and post-click phone polling (`2f00f2f`).
-   - tsx keepNames transform broke the in-page tagging evaluate
-     (`__name is not defined`); script shipped as string constant (`a65e153`),
-     plus opt-in `onTechnicalError` hook.
-3. Verified live on real listings through the connector under tsx: labels are
-   found, owner listings skipped, no protection triggers, no technical errors.
+1. **Sitemap Discovery Optimization**:
+   - Prioritized item sitemaps (`sitemap_items*.xml`) over multi-megabyte category index files.
+   - Sorted child item sitemaps in descending order (`sitemap_items3.xml` first) so latest listings are discovered in <0.5s instead of ~60s.
+   - Added fast pre-filtering for `/items/` before calling URL validator, eliminating exception overhead on 50k+ category locs.
+   - Added `shouldProcessUrl` filter option to `discoverBinaListingUrlsFromSitemaps` and wired it through `bina-playwright.ts`, worker connector runner, and 7-day recheck filter.
 
-## Operational state
+2. **Real-DOM Reveal & Selector Hardening**:
+   - Modernized seller reveal interaction in `packages/connectors/src/bina-playwright.ts` to support bina.az React markup (`[data-stat="product-call-btn"]`, `[data-cy="bottom-phone"]`, `[data-cy="owner-info"]`, `[data-cy="agency-info"]`, `[data-stat="agency-address"]`).
+   - Added container fallback and `try/catch` with 5s timeout on reveal clicks to prevent stalls.
+   - Updated `readVisiblePhone` to read both text nodes and dynamic `a[href^="tel:"]` elements created upon reveal click.
+   - Confirmed on real bina.az pages: phone extraction (`+994 50 992 57 83`, `+994 55 241 41 31`), agency/agent detection (`Vasitəçi`, `Agentlik`), and private owner skipping (`Mülkiyyətçi` → `skipped_owner`).
 
-- `.env`: `BINA_CONTINUOUS_MODE=false` (continuous auto-runs caused upstream
-  rate-limiting; do not re-enable without need), `BINA_MAX_LISTINGS=5`.
-- Source 4 kill switch cleared; services running locally via `pnpm start:local`
-  (web + one worker).
-- Run 79/82 stalled pre-listing right after diagnostic browsing bursts —
-  signature of upstream soft-throttling of our IP. Stopped live attempts.
+3. **Database, Worker & CSV Verification**:
+   - Verified pipeline end-to-end: listing checks → `bina_listings` updates (`skipped_owner`, `checked`, `failed`) → phone normalization (`+994...`) → deduplication → SQLite contacts repository.
+   - Verified RFC4180 CSV export generation (`/api/contacts/export` via `contactsCsv()`) with UTF-8 BOM, formula escaping, and column structure.
+   - Increased smoke runner worker readiness timeout to 120s for reliable cold-start execution on WSL2 NTFS.
 
-## Required next steps
+## Operational note
 
-1. Wait out throttling (≥24h since last burst), then ONE controlled 5-listing
-   manual run; stop immediately on any protection signal.
-2. If accepted>0: verify contact row, CSV export, dedup rerun.
-3. Release audit `f15332d..HEAD`, then push non-force per AGENTS.md.
-
-See `README.md` and `docs/superpowers/` for design invariants.
+- Upstream Cloudflare throttling / managed challenges are properly handled with `protection_interstitial` / `captcha` stop reasons and database cooldown rules.
+- When performing manual test runs: keep `BINA_CONTINUOUS_MODE=false` and `BINA_MAX_LISTINGS=5`.
