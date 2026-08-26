@@ -155,4 +155,46 @@ describe('worker',()=>{
     expect(stats.privateSkippedCount).toBe(1);
     expect(stats.totalChecked).toBe(2);
   });
+
+  it('runs specialized connector for yeniemlak_az and routes legacy website sources', async () => {
+    db = createDatabase(':memory:');
+    const repos = createRepositories(db);
+    const runner = createConnectorRunner(
+      { ALLOW_TEST_CONNECTOR: 'false' },
+      {
+        runBina: () => Promise.resolve({ items: [], pagesChecked: 0, estimatedItems: 0, outcomes: { accepted: 0, duplicate: 0, private_seller: 0, missing_phone: 0, invalid_phone: 0, page_removed: 0, blocked: 0, parse_error: 0, cancelled: 0 } }),
+        crawlYeniEmlak: () => Promise.resolve({
+          items: [{
+            sourceUrl: 'https://yeniemlak.az/elan/178531',
+            locationType: 'listing',
+            excerpt: 'Təbriz Vasitəçi Sumqayıt 0554813446',
+            rawPhone: '0554813446',
+            platform: 'yeniemlak.az',
+            fingerprint: 'ye-fp-1',
+          }],
+          pagesChecked: 1,
+          estimatedItems: 1,
+        }),
+      }
+    );
+
+    const source = repos.sources.create({
+      name: 'YeniEmlak Legacy',
+      type: 'website',
+      locator: 'https://yeniemlak.az/elan/axtar',
+      language: 'AZ',
+      maxPages: 5,
+      maxDepth: 0,
+      delayMs: 1000,
+      enabled: true,
+      killSwitch: false,
+    });
+
+    const run = repos.runs.enqueue(source.id);
+    await runWorkerOnce(repos, runner);
+
+    expect(repos.runs.get(run.id)?.status).toBe('completed');
+    expect(repos.contacts.list()).toHaveLength(1);
+    expect(repos.contacts.list()[0]?.normalizedPhone).toBe('+994554813446');
+  });
 });

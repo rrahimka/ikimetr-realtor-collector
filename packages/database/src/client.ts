@@ -9,6 +9,7 @@ const binaBlockedMigrationPath = resolve(packageRoot, 'drizzle/0001_bina_blocked
 const binaContinuousMigrationPath = resolve(packageRoot, 'drizzle/0002_bina_continuous.sql');
 const multiSourceMigrationPath = resolve(packageRoot, 'drizzle/0003_multi_source.sql');
 const fixSourceTypesMigrationPath = resolve(packageRoot, 'drizzle/0004_fix_source_types.sql');
+const expandSourceTypesMigrationPath = resolve(packageRoot, 'drizzle/0005_expand_source_types.sql');
 
 export type CollectorDatabase = Database.Database;
 export const DEFAULT_DATABASE_PATH = './data/collector.db';
@@ -42,6 +43,10 @@ export function createDatabase(path = process.env.DATABASE_URL ?? DEFAULT_DATABA
     }
     if (version < 4) {
       db.exec(readFileSync(fixSourceTypesMigrationPath, 'utf8'));
+      version = db.pragma('user_version', { simple: true }) as number;
+    }
+    if (version < 5) {
+      db.exec(readFileSync(expandSourceTypesMigrationPath, 'utf8'));
     }
 
     const violations = db.pragma('foreign_key_check') as unknown[];

@@ -1,9 +1,13 @@
 import {
   BINA_OUTCOMES,
   crawlArendaAz,
+  crawlCityAz,
+  crawlEmlakBazariAz,
+  crawlIpotekaAz,
   crawlStopAz,
   crawlTapAz,
   crawlWebsite,
+  crawlYeniEmlakAz,
   runBinaAgencyConnector,
   type BinaConnectorResult,
   type BinaOutcome,
@@ -31,6 +35,10 @@ export interface ConnectorDependencies {
   crawlTap?: typeof crawlTapAz;
   crawlArenda?: typeof crawlArendaAz;
   crawlStop?: typeof crawlStopAz;
+  crawlYeniEmlak?: typeof crawlYeniEmlakAz;
+  crawlEmlakBazari?: typeof crawlEmlakBazariAz;
+  crawlIpoteka?: typeof crawlIpotekaAz;
+  crawlCity?: typeof crawlCityAz;
 }
 
 function permissionDisabledResult(): BinaConnectorResult {
@@ -46,6 +54,10 @@ export function createConnectorRunner(
     crawlTap: crawlTapAz,
     crawlArenda: crawlArendaAz,
     crawlStop: crawlStopAz,
+    crawlYeniEmlak: crawlYeniEmlakAz,
+    crawlEmlakBazari: crawlEmlakBazariAz,
+    crawlIpoteka: crawlIpotekaAz,
+    crawlCity: crawlCityAz,
   },
 ) {
   return async (source: Source, context: ConnectorContext = { shouldStop: () => false }): Promise<ConnectorResult> => {
@@ -122,6 +134,58 @@ export function createConnectorRunner(
       });
     }
 
+    if (source.type === 'yeniemlak_az') {
+      const crawlYeniEmlak = dependencies.crawlYeniEmlak ?? crawlYeniEmlakAz;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlYeniEmlak({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 20,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
+    if (source.type === 'emlakbazari_az') {
+      const crawlEmlakBazari = dependencies.crawlEmlakBazari ?? crawlEmlakBazariAz;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlEmlakBazari({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 20,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
+    if (source.type === 'ipoteka_az') {
+      const crawlIpoteka = dependencies.crawlIpoteka ?? crawlIpotekaAz;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlIpoteka({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 20,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
+    if (source.type === 'city_az') {
+      const crawlCity = dependencies.crawlCity ?? crawlCityAz;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlCity({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 20,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
     if (source.type === 'stop_az') {
       const crawlStop = dependencies.crawlStop ?? crawlStopAz;
       const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
@@ -154,6 +218,54 @@ export function createConnectorRunner(
         const crawlArenda = dependencies.crawlArenda ?? crawlArendaAz;
         const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
         return crawlArenda({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 20,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'yeniemlak_az') {
+        const crawlYeniEmlak = dependencies.crawlYeniEmlak ?? crawlYeniEmlakAz;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlYeniEmlak({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 20,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'emlakbazari_az') {
+        const crawlEmlakBazari = dependencies.crawlEmlakBazari ?? crawlEmlakBazariAz;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlEmlakBazari({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 20,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'ipoteka_az') {
+        const crawlIpoteka = dependencies.crawlIpoteka ?? crawlIpotekaAz;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlIpoteka({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 20,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'city_az') {
+        const crawlCity = dependencies.crawlCity ?? crawlCityAz;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlCity({
           startUrl,
           maxPages: source.maxPages > 0 ? source.maxPages : 20,
           maxDepth: source.maxDepth,

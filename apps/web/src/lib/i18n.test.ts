@@ -93,6 +93,14 @@ describe('i18n', () => {
     expect(t('az', 'sourceType.tapAz')).toBe('Tap.az — daşınmaz əmlak');
     expect(t('ru', 'sourceType.arendaAz')).toBe('Arenda.az — аренда и продажа');
     expect(t('az', 'sourceType.arendaAz')).toBe('Arenda.az — kirayə və satış');
+    expect(t('ru', 'sourceType.yeniemlakAz')).toBe('YeniEmlak.az — недвижимость');
+    expect(t('az', 'sourceType.yeniemlakAz')).toBe('YeniEmlak.az — daşınmaz əmlak');
+    expect(t('ru', 'sourceType.emlakbazariAz')).toBe('EmlakBazari.az — недвижимость');
+    expect(t('az', 'sourceType.emlakbazariAz')).toBe('EmlakBazari.az — daşınmaz əmlak');
+    expect(t('ru', 'sourceType.ipotekaAz')).toBe('Ipoteka.az — недвижимость');
+    expect(t('az', 'sourceType.ipotekaAz')).toBe('Ipoteka.az — daşınmaz əmlak');
+    expect(t('ru', 'sourceType.cityAz')).toBe('City.az — недвижимость');
+    expect(t('az', 'sourceType.cityAz')).toBe('City.az — daşınmaz əmlak');
     expect(t('ru', 'sourceType.stopAz')).toBe('Stop.az — недвижимость');
     expect(t('az', 'sourceType.stopAz')).toBe('Stop.az — daşınmaz əmlak');
 

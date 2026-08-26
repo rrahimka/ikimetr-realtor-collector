@@ -8,10 +8,14 @@
     "./apify": "./src/apify.ts",
     "./arenda": "./src/arenda.ts",
     "./bina": "./src/bina.ts",
+    "./city": "./src/city.ts",
+    "./emlakbazari": "./src/emlakbazari.ts",
     "./google-maps-csv": "./src/google-maps-csv.ts",
+    "./ipoteka": "./src/ipoteka.ts",
     "./stop": "./src/stop.ts",
     "./tap": "./src/tap.ts",
-    "./types": "./src/types.ts"
+    "./types": "./src/types.ts",
+    "./yeniemlak": "./src/yeniemlak.ts"
   },
   "scripts": {
     "test": "vitest run --root ../.. packages/connectors/src",

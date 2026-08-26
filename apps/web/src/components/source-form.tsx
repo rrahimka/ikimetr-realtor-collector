@@ -9,6 +9,10 @@ export const SOURCE_TYPE_OPTIONS = [
   { value: 'bina_agency', labelKey: 'sourceType.binaAgency' },
   { value: 'tap_az', labelKey: 'sourceType.tapAz' },
   { value: 'arenda_az', labelKey: 'sourceType.arendaAz' },
+  { value: 'yeniemlak_az', labelKey: 'sourceType.yeniemlakAz' },
+  { value: 'emlakbazari_az', labelKey: 'sourceType.emlakbazariAz' },
+  { value: 'ipoteka_az', labelKey: 'sourceType.ipotekaAz' },
+  { value: 'city_az', labelKey: 'sourceType.cityAz' },
   { value: 'google_maps_query', labelKey: 'sourceType.googleMaps' },
   { value: 'instagram_profile', labelKey: 'sourceType.instagramProfile' },
   { value: 'tiktok_profile', labelKey: 'sourceType.tiktokProfile' },
@@ -27,6 +31,10 @@ function detectClientSourceType(input: string): SourceType | undefined {
     if (host === 'bina.az') return 'bina_agency';
     if (host === 'tap.az') return 'tap_az';
     if (host === 'arenda.az') return 'arenda_az';
+    if (host === 'yeniemlak.az') return 'yeniemlak_az';
+    if (host === 'emlakbazari.az') return 'emlakbazari_az';
+    if (host === 'ipoteka.az') return 'ipoteka_az';
+    if (host === 'city.az') return 'city_az';
   } catch {
     // ignore
   }
@@ -37,7 +45,15 @@ export function getSourceFormDefaults(type: string): FormDefaults {
   if (type === 'bina_agency') {
     return { maxPages: 10, maxDepth: 0, delayMs: 10_000, language: 'AZ' };
   }
-  if (type === 'tap_az' || type === 'arenda_az' || type === 'stop_az') {
+  if (
+    type === 'tap_az' ||
+    type === 'arenda_az' ||
+    type === 'yeniemlak_az' ||
+    type === 'emlakbazari_az' ||
+    type === 'ipoteka_az' ||
+    type === 'city_az' ||
+    type === 'stop_az'
+  ) {
     return { maxPages: 20, maxDepth: 0, delayMs: 1_000, language: 'AZ' };
   }
   return { maxPages: 10, maxDepth: 1, delayMs: 1_000, language: 'AZ' };

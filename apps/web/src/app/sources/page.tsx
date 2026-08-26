@@ -67,6 +67,10 @@ export default async function Sources() {
                 if (bina) typeLabel = t(lang, 'sourceType.binaAgency');
                 else if (tap) typeLabel = t(lang, 'sourceType.tapAz');
                 else if (arenda) typeLabel = t(lang, 'sourceType.arendaAz');
+                else if (source.type === 'yeniemlak_az') typeLabel = t(lang, 'sourceType.yeniemlakAz');
+                else if (source.type === 'emlakbazari_az') typeLabel = t(lang, 'sourceType.emlakbazariAz');
+                else if (source.type === 'ipoteka_az') typeLabel = t(lang, 'sourceType.ipotekaAz');
+                else if (source.type === 'city_az') typeLabel = t(lang, 'sourceType.cityAz');
                 else if (source.type === 'stop_az') typeLabel = t(lang, 'sourceType.stopAz');
                 else if (source.type === 'website') typeLabel = t(lang, 'sourceType.website');
                 else if (source.type === 'listing_page') typeLabel = t(lang, 'sourceType.listingPage');
