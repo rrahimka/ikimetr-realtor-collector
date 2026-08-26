@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Route } from 'playwright';
-import { isAllowedBinaRequest, isAllowedByBinaRobots, runBinaAgencyConnector, type BinaConnectorOptions } from './bina-playwright';
+import { isAllowedBinaRequest, isAllowedByBinaRobots, runBinaAgencyConnector, TAG_SELLER_CARDS_SCRIPT, type BinaConnectorOptions } from './bina-playwright';
 
 const searchUrl = 'https://bina.az/baki/alqi-satqi/menziller';
 const openedBrowsers = new Set<Browser>();
@@ -98,6 +98,11 @@ async function runWithFixture(
 }
 
 describe('runBinaAgencyConnector', () => {
+  it('ships a syntactically valid in-page tagging script', () => {
+    expect(TAG_SELLER_CARDS_SCRIPT.trim().startsWith('(function')).toBe(true);
+    expect(TAG_SELLER_CARDS_SCRIPT.trim().endsWith(')')).toBe(true);
+  });
+
   it('accepts only a visible Agentlik listing and a phone revealed after the click', async () => {
     let phoneWasHiddenBeforeClick = false;
     const result = await runWithFixture(async (route) => {

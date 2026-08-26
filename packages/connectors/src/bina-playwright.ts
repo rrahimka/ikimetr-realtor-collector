@@ -54,6 +54,7 @@ export interface BinaConnectorOptions {
   handleAllowedRequest?: (route: Route) => Promise<void>;
   observePage?: (page: Page, phase: BinaPagePhase) => Promise<void>;
   onBlockedRequest?: (url: string) => void;
+  onTechnicalError?: (summary: string) => void;
   shouldProcessUrl?: (url: string) => boolean | Promise<boolean>;
   sitemapFetch?: BinaSitemapFetch;
 }
@@ -162,30 +163,45 @@ const REVEAL_BUTTON_TEXT = 'Nömrəni göstər';
 
 type TaggedSellerType = 'owner' | 'agency' | 'agent';
 
-async function tagSellerCards(page: Page): Promise<void> {
-  await page.evaluate(({ labelPattern, revealText }: { labelPattern: string; revealText: string }) => {
-    const labelRe = new RegExp(labelPattern, 'u');
-    const exactText = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim();
-    const labelEls = Array.from(document.querySelectorAll('span, div, p, a, strong, b, button'))
-      .filter((el) => labelRe.test(exactText(el)))
-      .filter((el) => el.closest('.item-card') === null) as HTMLElement[];
-    for (const labelEl of labelEls) {
-      const rawLabel = exactText(labelEl);
-      const isOwner = /^Mülkiyyətçi|^Sahibindən/u.test(rawLabel);
-      let scope: HTMLElement | null = labelEl.parentElement;
-      for (let depth = 0; scope !== null && depth < 6; depth += 1, scope = scope.parentElement) {
-        if (scope.closest('.item-card') !== null) break;
-        const reveal = isOwner
-          ? null
-          : (Array.from(scope.querySelectorAll('button, a, div, span'))
-            .find((el) => exactText(el) === revealText && el.closest('.item-card') === null) as HTMLElement | undefined);
-        if (!isOwner && !reveal) continue;
-        scope.setAttribute('data-ikimetr-card', isOwner ? 'owner' : /^Agentlik/u.test(rawLabel) ? 'agency' : 'agent');
-        if (reveal) reveal.setAttribute('data-ikimetr-reveal', '');
-        break;
+export const TAG_SELLER_CARDS_SCRIPT = `
+(function (arg) {
+  var labelRe = new RegExp(arg.labelPattern, 'u');
+  function exactText(el) { return (el.textContent || '').replace(/\\s+/g, ' ').trim(); }
+  var all = document.querySelectorAll('span, div, p, a, strong, b, button');
+  var labelEls = [];
+  for (var i = 0; i < all.length; i += 1) {
+    var el = all[i];
+    if (!labelRe.test(exactText(el))) continue;
+    if (el.closest('.item-card') !== null) continue;
+    labelEls.push(el);
+  }
+  for (var j = 0; j < labelEls.length; j += 1) {
+    var labelEl = labelEls[j];
+    var rawLabel = exactText(labelEl);
+    var isOwner = /^Mülkiyyətçi|^Sahibindən/u.test(rawLabel);
+    var scope = labelEl.parentElement;
+    for (var depth = 0; scope !== null && depth < 6; depth += 1) {
+      if (scope.closest('.item-card') !== null) break;
+      var reveal = null;
+      if (!isOwner) {
+        var inner = scope.querySelectorAll('button, a, div, span');
+        for (var k = 0; k < inner.length; k += 1) {
+          if (exactText(inner[k]) === arg.revealText && inner[k].closest('.item-card') === null) { reveal = inner[k]; break; }
+        }
       }
+      if (!isOwner && reveal === null) { scope = scope.parentElement; continue; }
+      scope.setAttribute('data-ikimetr-card', isOwner ? 'owner' : (/^Agentlik/u.test(rawLabel) ? 'agency' : 'agent'));
+      if (reveal !== null) reveal.setAttribute('data-ikimetr-reveal', '');
+      break;
     }
-  }, { labelPattern: SELLER_TYPE_LABEL_EXACT_RE.source, revealText: REVEAL_BUTTON_TEXT });
+  }
+})
+`;
+
+async function tagSellerCards(page: Page): Promise<void> {
+  await page.evaluate(
+    `(${TAG_SELLER_CARDS_SCRIPT})(${JSON.stringify({ labelPattern: SELLER_TYPE_LABEL_EXACT_RE.source, revealText: REVEAL_BUTTON_TEXT })})`,
+  );
 }
 
 async function findTaggedSeller(page: Page): Promise<{ card: Locator; reveal?: Locator; sellerType: ExplicitBinaSellerType } | undefined> {
@@ -513,7 +529,8 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         }));
         outcomes.accepted += 1;
         consecutiveTechnicalErrors = 0;
-      } catch {
+      } catch (error) {
+        options.onTechnicalError?.(error instanceof Error ? `${error.message.split('\n')[0] ?? error.message}`.slice(0, 200) : 'unknown listing error');
         outcomes.parse_error += 1;
         consecutiveTechnicalErrors += 1;
         if (consecutiveTechnicalErrors >= 5) return resultWithStop(baseResult, 'technical_error_limit');
