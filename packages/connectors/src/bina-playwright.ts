@@ -2,12 +2,15 @@ import { createHash } from 'node:crypto';
 import { chromium, type Browser, type Locator, type Page, type Response, type Route } from 'playwright';
 import {
   BINA_OUTCOMES,
+  detectExplicitBinaSellerType,
   discoverBinaListingUrls,
-  hasVisibleAgencyMarker,
   normalizeVisibleBinaPhone,
   validateBinaUrl,
   type BinaOutcome,
+  type ExplicitBinaSellerType,
 } from './bina';
+
+
 import {
   discoverBinaListingUrlsFromSitemaps,
   extractDeclaredBinaSitemapUrls,
@@ -151,24 +154,55 @@ async function visibleText(container: Page | Locator, selector: string): Promise
   return text === '' ? undefined : text;
 }
 
-async function findAgencySeller(page: Page): Promise<{ card: Locator; reveal?: Locator } | undefined> {
+async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: Locator; sellerType: ExplicitBinaSellerType } | undefined> {
   const cards = page.locator(SELLER_CARD_SELECTOR);
-  for (let index = 0; index < await cards.count(); index += 1) {
+  const cardCount = await cards.count();
+  for (let index = 0; index < cardCount; index += 1) {
     const card = cards.nth(index);
     if (!await card.isVisible()) continue;
-    const lines = (await card.innerText()).split(/\r?\n/u);
-    if (!lines.some((line) => hasVisibleAgencyMarker(line))) continue;
-    const reveals = card
-      .getByRole('button', { name: PHONE_BUTTON_NAME, exact: true })
-      .or(card.getByRole('link', { name: PHONE_BUTTON_NAME, exact: true }));
-    for (let revealIndex = 0; revealIndex < await reveals.count(); revealIndex += 1) {
-      const reveal = reveals.nth(revealIndex);
-      if (await reveal.isVisible()) return { card, reveal };
+    const cardText = await card.innerText();
+    const lines = cardText.split(/\r?\n/u);
+
+    let sellerType: ExplicitBinaSellerType = 'unknown';
+    for (const line of lines) {
+      const detected = detectExplicitBinaSellerType(line);
+      if (detected !== 'unknown') {
+        sellerType = detected;
+        break;
+      }
     }
-    return { card };
+    if (sellerType === 'unknown') {
+      sellerType = detectExplicitBinaSellerType(cardText);
+    }
+
+    if (sellerType === 'owner') return { card, sellerType: 'owner' };
+    if (sellerType === 'agency' || sellerType === 'agent') {
+      const reveals = card
+        .getByRole('button', { name: PHONE_BUTTON_NAME, exact: true })
+        .or(card.getByRole('link', { name: PHONE_BUTTON_NAME, exact: true }));
+      for (let revealIndex = 0; revealIndex < await reveals.count(); revealIndex += 1) {
+        const reveal = reveals.nth(revealIndex);
+        if (await reveal.isVisible()) return { card, reveal, sellerType };
+      }
+      return { card, sellerType };
+    }
   }
+
+  // Check whole page for owner marker if no seller card was matched
+  const body = page.locator('body');
+  if (await body.count() > 0) {
+    const bodyText = await body.innerText().catch(() => '');
+    const lines = bodyText.split(/\r?\n/u);
+    for (const line of lines) {
+      if (detectExplicitBinaSellerType(line) === 'owner') {
+        return { card: body, sellerType: 'owner' };
+      }
+    }
+  }
+
   return undefined;
 }
+
 
 async function readVisiblePhone(container: Locator): Promise<string | undefined> {
   const candidates = container.locator('[data-bina-phone]:visible, a[href^="tel:"]:visible');
@@ -207,8 +241,13 @@ async function installRequestPolicy(page: Page, options: BinaConnectorOptions, r
   page.on('download', (download) => { void download.cancel(); });
 }
 
-function listingEvidence(pageUrl: string, phone: string, metadata: { name?: string; agency?: string; location?: string }): ConnectorEvidence {
-  const visibleParts = ['Agentlik', metadata.agency, metadata.location].filter((part): part is string => Boolean(part));
+function listingEvidence(
+  pageUrl: string,
+  phone: string,
+  metadata: { name?: string; agency?: string; location?: string; sellerType?: ExplicitBinaSellerType },
+): ConnectorEvidence {
+  const typeLabel = metadata.sellerType === 'agency' ? 'Agentlik' : metadata.sellerType === 'agent' ? 'Vasitəçi' : 'Agentlik';
+  const visibleParts = [typeLabel, metadata.agency, metadata.location].filter((part): part is string => Boolean(part));
   const evidence: ConnectorEvidence = {
     sourceUrl: pageUrl,
     locationType: 'listing',
@@ -216,6 +255,7 @@ function listingEvidence(pageUrl: string, phone: string, metadata: { name?: stri
     rawPhone: phone,
     platform: 'bina.az',
     fingerprint: createHash('sha256').update(pageUrl).digest('hex'),
+    ...(metadata.sellerType ? { explicitSellerType: metadata.sellerType } : {}),
   };
   if (metadata.name) evidence.name = metadata.name;
   if (metadata.agency) evidence.agency = metadata.agency;
@@ -230,9 +270,10 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
   if (initialStop) return resultWithStop(baseResult, initialStop, 'cancelled');
 
   const startUrl = validateBinaUrl(options.startUrl, 'search');
-  const maxListings = Math.max(0, Math.min(100, Math.trunc(options.maxListings)));
+  const maxListings = options.maxListings > 0 ? Math.trunc(options.maxListings) : 0;
   const delayMs = Math.max(10_000, Math.trunc(options.delayMs));
   const sleep = options.sleep ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+
   const launch = options.launch ?? (() => chromium.launch({ headless: true }));
 
   let browser: Browser | undefined;
@@ -363,8 +404,8 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
       }
 
       try {
-        const seller = await findAgencySeller(page);
-        if (!seller) {
+        const seller = await findSellerOnPage(page);
+        if (!seller || seller.sellerType === 'owner') {
           outcomes.private_seller += 1;
           consecutiveTechnicalErrors = 0;
           continue;
@@ -396,7 +437,12 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         const name = await visibleText(page, '[data-bina-name], h1');
         const agency = await visibleText(seller.card, '[data-bina-agency]');
         const location = await visibleText(page, '[data-bina-location]');
-        baseResult.items.push(listingEvidence(canonicalUrl, phone, { ...(name ? { name } : {}), ...(agency ? { agency } : {}), ...(location ? { location } : {}) }));
+        baseResult.items.push(listingEvidence(canonicalUrl, phone, {
+          ...(name ? { name } : {}),
+          ...(agency ? { agency } : {}),
+          ...(location ? { location } : {}),
+          sellerType: seller.sellerType,
+        }));
         outcomes.accepted += 1;
         consecutiveTechnicalErrors = 0;
       } catch {
@@ -404,6 +450,8 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         consecutiveTechnicalErrors += 1;
         if (consecutiveTechnicalErrors >= 5) return resultWithStop(baseResult, 'technical_error_limit');
       }
+
+
     }
     return baseResult;
   } finally {

@@ -11,7 +11,9 @@ export interface BinaScheduleConfig {
   maxListings: number;
   delayMs: number;
   cycleHours: number;
+  continuous: boolean;
 }
+
 
 export interface SchedulerTickResult {
   enqueued: number;
@@ -33,12 +35,17 @@ function finiteInteger(value: string | undefined, fallback: number): number {
 }
 
 export function readBinaScheduleConfig(env: NodeJS.ProcessEnv): BinaScheduleConfig {
+  const maxListingsRaw = env.BINA_MAX_LISTINGS;
+  const parsedMax = Number(maxListingsRaw);
+  const maxListings = Number.isFinite(parsedMax) && parsedMax > 0 ? Math.trunc(parsedMax) : 0;
+  const continuous = env.BINA_CONTINUOUS_MODE === 'false' ? false : (maxListings === 0 || env.BINA_CONTINUOUS_MODE === 'true');
   return {
     enabled: env.BINA_ENABLED === 'true',
     permissionConfirmed: env.BINA_PERMISSION_CONFIRMED === 'true',
-    maxListings: Math.min(100, Math.max(1, finiteInteger(env.BINA_MAX_LISTINGS, 100))),
+    maxListings,
     delayMs: Math.max(10_000, finiteInteger(env.BINA_DELAY_MS, 10_000)),
-    cycleHours: Math.max(6, finiteInteger(env.BINA_CYCLE_HOURS, 6)),
+    cycleHours: Math.max(1, finiteInteger(env.BINA_CYCLE_HOURS, 6)),
+    continuous,
   };
 }
 
@@ -68,9 +75,11 @@ export function runSchedulerTick(repos: Repositories, env: NodeJS.ProcessEnv, no
       result.skippedBlocked += 1;
       continue;
     }
-    if ((latest?.status === 'completed' || (latest?.status === 'failed' && !latest.needsReview)) && elapsed < config.cycleHours * HOUR_MS) {
-      result.skippedCooldown += 1;
-      continue;
+    if (!config.continuous) {
+      if ((latest?.status === 'completed' || (latest?.status === 'failed' && !latest.needsReview)) && elapsed < config.cycleHours * HOUR_MS) {
+        result.skippedCooldown += 1;
+        continue;
+      }
     }
     try {
       repos.runs.enqueue(source.id);
@@ -85,6 +94,7 @@ export function runSchedulerTick(repos: Repositories, env: NodeJS.ProcessEnv, no
   }
   return result;
 }
+
 
 const systemClock: SchedulerClock = {
   now: () => new Date(),

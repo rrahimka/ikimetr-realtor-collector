@@ -439,6 +439,36 @@ describe('runBinaAgencyConnector', () => {
     expect(result.pagesChecked).toBe(0);
   });
 
+  it('accepts an explicit agent listing (Vasiteci)', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/') ? agencyHtml({ marker: 'Vasitəçi', name: 'Samir Əliyev' }) : searchHtml([102]),
+      });
+    });
+
+    expect(result.outcomes.accepted).toBe(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.explicitSellerType).toBe('agent');
+  });
+
+  it('skips an explicit owner listing (Mulkiyyetci)', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/') ? '<section data-bina-seller-card><strong>Mülkiyyətçi</strong><button>Nömrəni göstər</button></section>' : searchHtml([103]),
+      });
+    });
+
+    expect(result.outcomes.private_seller).toBe(1);
+    expect(result.outcomes.accepted).toBe(0);
+    expect(result.items).toHaveLength(0);
+  });
+
   it('closes page, context, and browser when setup throws', async () => {
     let browser: Browser | undefined;
     await expect(runBinaAgencyConnector({

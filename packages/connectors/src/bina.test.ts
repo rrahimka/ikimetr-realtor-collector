@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   BINA_OUTCOMES,
+  detectExplicitBinaSellerType,
   discoverBinaListingUrls,
   hasVisibleAgencyMarker,
+  isExplicitOwnerMarker,
   maskPhone,
   normalizeVisibleBinaPhone,
   validateBinaUrl,
 } from './bina';
+
 
 describe('validateBinaUrl', () => {
   it.each([
@@ -62,13 +65,19 @@ describe('discoverBinaListingUrls', () => {
 });
 
 describe('visible agency and phone rules', () => {
-  it.each(['Agentlik', 'AGENTLİK', '  Agentlik  ', 'Elan sahibi: Agentlik'])('recognizes the visible Agentlik marker in %s', (text) => {
+  it.each(['Agentlik', 'AGENTLİK', '  Agentlik  ', 'Elan sahibi: Agentlik', 'Vasitəçi', 'Rieltor', 'Əmlak Agentliyi'])('recognizes the professional seller marker in %s', (text) => {
     expect(hasVisibleAgencyMarker(text)).toBe(true);
   });
 
-  it.each(['Agent', 'agentlikdə iş', 'Şəxsi elan', '', 'Agentliklər'])('rejects an absent or incidental marker in %s', (text) => {
+  it.each(['agentlikdə iş', 'Şəxsi elan', '', 'Agentliklər', 'Mülkiyyətçi'])('rejects non-agent or owner marker in %s', (text) => {
     expect(hasVisibleAgencyMarker(text)).toBe(false);
   });
+
+  it.each(['Mülkiyyətçi', 'Sahibindən', 'Şəxsi', 'Собственник'])('recognizes owner markers in %s', (text) => {
+    expect(detectExplicitBinaSellerType(text)).toBe('owner');
+    expect(isExplicitOwnerMarker(text)).toBe(true);
+  });
+
 
   it.each([
     ['+994 50 123 45 67', '+994501234567'],

@@ -42,14 +42,24 @@ export function createConnectorRunner(
         return current.enabled && current.permissionConfirmed;
       };
       if (!permission()) return permissionDisabledResult();
+      let effectiveMaxListings = 0;
+
+      if (config.maxListings > 0 && source.maxPages > 0) {
+        effectiveMaxListings = Math.min(config.maxListings, source.maxPages);
+      } else if (config.maxListings > 0) {
+        effectiveMaxListings = config.maxListings;
+      } else if (source.maxPages > 0) {
+        effectiveMaxListings = source.maxPages;
+      }
       return dependencies.runBina({
         startUrl: source.locator,
-        maxListings: Math.min(config.maxListings, Math.max(1, source.maxPages)),
+        maxListings: effectiveMaxListings,
         delayMs: Math.max(config.delayMs, source.delayMs),
         permission,
         shouldStop: context.shouldStop,
         ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
       });
+
     }
     if (source.type === 'website' || source.type === 'listing_page') throw new Error('Generic web connector is disabled in local-only mode');
     if (source.type.startsWith('instagram') && !env.APIFY_TOKEN) throw new Error('Instagram: Не настроено (APIFY_TOKEN)');

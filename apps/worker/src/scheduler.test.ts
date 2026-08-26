@@ -30,13 +30,17 @@ function setup() {
 }
 
 describe('readBinaScheduleConfig', () => {
-  it('hard-clamps max listings, delay, and cycle interval', () => {
+  it('parses max listings, delay, and continuous mode', () => {
     expect(readBinaScheduleConfig({
       ...enabledEnv,
       BINA_MAX_LISTINGS: '999',
       BINA_DELAY_MS: '1',
-      BINA_CYCLE_HOURS: '1',
-    })).toMatchObject({ enabled: true, permissionConfirmed: true, maxListings: 100, delayMs: 10_000, cycleHours: 6 });
+      BINA_CYCLE_HOURS: '0',
+    })).toMatchObject({ enabled: true, permissionConfirmed: true, maxListings: 999, delayMs: 10_000, cycleHours: 1 });
+
+    expect(readBinaScheduleConfig({
+      ...enabledEnv,
+    })).toMatchObject({ enabled: true, permissionConfirmed: true, maxListings: 0, continuous: true });
   });
 });
 
@@ -49,16 +53,29 @@ describe('runSchedulerTick', () => {
     expect(runSchedulerTick(repos, enabledEnv, now)).toMatchObject({ enqueued: 0, skippedActive: 1 });
   });
 
-  it('waits six hours after a completed cycle and becomes eligible from SQLite time', () => {
+  it('enqueues next batch immediately in continuous mode', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
     const { repos, source } = setup();
-    runSchedulerTick(repos, enabledEnv, new Date());
+    runSchedulerTick(repos, { ...enabledEnv, BINA_CONTINUOUS_MODE: 'true' }, new Date());
     const run = repos.runs.claimNext()!;
     repos.runs.finish(run.id, 'completed');
 
-    expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 6 * HOUR - 1))).toMatchObject({ enqueued: 0, skippedCooldown: 1 });
-    expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 6 * HOUR))).toMatchObject({ enqueued: 1 });
+    expect(runSchedulerTick(repos, { ...enabledEnv, BINA_CONTINUOUS_MODE: 'true' }, new Date(Date.now() + 1_000))).toMatchObject({ enqueued: 1 });
+    expect(repos.runs.hasActive(source.id)).toBe(true);
+  });
+
+  it('waits six hours after a completed cycle in non-continuous mode', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
+    const { repos, source } = setup();
+    const scheduledEnv = { ...enabledEnv, BINA_CONTINUOUS_MODE: 'false', BINA_CYCLE_HOURS: '6' };
+    runSchedulerTick(repos, scheduledEnv, new Date());
+    const run = repos.runs.claimNext()!;
+    repos.runs.finish(run.id, 'completed');
+
+    expect(runSchedulerTick(repos, scheduledEnv, new Date(Date.now() + 6 * HOUR - 1))).toMatchObject({ enqueued: 0, skippedCooldown: 1 });
+    expect(runSchedulerTick(repos, scheduledEnv, new Date(Date.now() + 6 * HOUR))).toMatchObject({ enqueued: 1 });
     expect(repos.runs.hasActive(source.id)).toBe(true);
   });
 
@@ -74,17 +91,19 @@ describe('runSchedulerTick', () => {
     expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 24 * HOUR))).toMatchObject({ enqueued: 1 });
   });
 
-  it('applies the normal cooldown after an unexpected failed cycle', () => {
+  it('applies the normal cooldown after an unexpected failed cycle in non-continuous mode', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
     const { repos, source } = setup();
+    const scheduledEnv = { ...enabledEnv, BINA_CONTINUOUS_MODE: 'false', BINA_CYCLE_HOURS: '6' };
     const queued = repos.runs.enqueue(source.id);
     repos.runs.claimNext();
     repos.runs.finish(queued.id, 'failed', undefined, 'Bina connector failed');
 
-    expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 6 * HOUR - 1))).toMatchObject({ enqueued: 0, skippedCooldown: 1 });
-    expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 6 * HOUR))).toMatchObject({ enqueued: 1 });
+    expect(runSchedulerTick(repos, scheduledEnv, new Date(Date.now() + 6 * HOUR - 1))).toMatchObject({ enqueued: 0, skippedCooldown: 1 });
+    expect(runSchedulerTick(repos, scheduledEnv, new Date(Date.now() + 6 * HOUR))).toMatchObject({ enqueued: 1 });
   });
+
 
   it('treats a concurrent manual enqueue race as an active-run skip', () => {
     const { repos } = setup();

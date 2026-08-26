@@ -20,7 +20,9 @@ export interface BinaSitemapDiscoveryOptions {
   maxLocs?: number;
   maxDocuments?: number;
   timeoutMs?: number;
+  onListingDiscovered?: (url: string) => boolean | Promise<boolean>;
 }
+
 
 export function validateBinaSitemapRequest(
   input: string,
@@ -211,8 +213,7 @@ async function fetchSitemap(
 export async function discoverBinaListingUrlsFromSitemaps(
   options: BinaSitemapDiscoveryOptions,
 ): Promise<string[]> {
-  const limit = Math.max(0, Math.min(100, Math.trunc(options.maxListings)));
-  if (limit === 0) return [];
+  const limit = options.maxListings > 0 ? Math.trunc(options.maxListings) : Number.POSITIVE_INFINITY;
   const initialUrls = extractDeclaredBinaSitemapUrls(options.robotsText);
   if (initialUrls.length === 0) return [];
 
@@ -248,6 +249,10 @@ export async function discoverBinaListingUrlsFromSitemaps(
         if (!seenListings.has(listing)) {
           seenListings.add(listing);
           listings.push(listing);
+          if (options.onListingDiscovered) {
+            const stop = options.onListingDiscovered(listing);
+            if (stop) return true;
+          }
         }
       } catch {
         // Non-listing and non-Bina URLs are ignored without being fetched.

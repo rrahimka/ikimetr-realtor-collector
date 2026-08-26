@@ -49,9 +49,9 @@ export function validateBinaUrl(input: string, kind: BinaUrlKind): string {
   return `https://bina.az/items/${id}`;
 }
 
-export function discoverBinaListingUrls(html: string, baseUrl: string, cap: number): string[] {
+export function discoverBinaListingUrls(html: string, baseUrl: string, cap = 0): string[] {
   const safeBase = validateBinaUrl(baseUrl, 'search');
-  const limit = Math.max(0, Math.min(100, Math.trunc(cap)));
+  const limit = cap > 0 ? Math.trunc(cap) : Number.POSITIVE_INFINITY;
   const result: string[] = [];
   const seen = new Set<string>();
   const $ = load(html);
@@ -72,9 +72,46 @@ export function discoverBinaListingUrls(html: string, baseUrl: string, cap: numb
   return result;
 }
 
+export type ExplicitBinaSellerType = 'agency' | 'agent' | 'owner' | 'unknown';
+
+export function normalizeBinaText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/gu, '')
+    .toLowerCase()
+    .replace(/[əe]/gu, 'e')
+    .replace(/[ıi]/gu, 'i')
+    .replace(/[öo]/gu, 'o')
+    .replace(/[üu]/gu, 'u')
+    .replace(/[ğg]/gu, 'g')
+    .replace(/[çc]/gu, 'c')
+    .replace(/[şs]/gu, 's');
+}
+
+export function detectExplicitBinaSellerType(text: string): ExplicitBinaSellerType {
+  const normalized = normalizeBinaText(text);
+
+  if (/(?:^|[^\p{L}])(?:agentlik|emlak agentliyi|agency|агентство)(?:$|[^\p{L}])/u.test(normalized)) {
+    return 'agency';
+  }
+  if (/(?:^|[^\p{L}])(?:vasiteci|rieltor|makler|emlakci|риелтор|риэлтор|агент|realtor|agent)(?:$|[^\p{L}])/u.test(normalized)) {
+    return 'agent';
+  }
+  if (/(?:^|[^\p{L}])(?:mulkiyyetci|sahibinden|sahibi|sexsi|ozum|собственник|владелец|хозяин|owner|private)(?:$|[^\p{L}])/u.test(normalized)) {
+    return 'owner';
+  }
+  return 'unknown';
+}
+
+
+
 export function hasVisibleAgencyMarker(text: string): boolean {
-  const normalized = text.normalize('NFKC').toLocaleLowerCase('az-AZ');
-  return /(?:^|[^\p{L}])agentlik(?:$|[^\p{L}])/u.test(normalized);
+  const sellerType = detectExplicitBinaSellerType(text);
+  return sellerType === 'agency' || sellerType === 'agent';
+}
+
+export function isExplicitOwnerMarker(text: string): boolean {
+  return detectExplicitBinaSellerType(text) === 'owner';
 }
 
 export function normalizeVisibleBinaPhone(text: string): string | undefined {

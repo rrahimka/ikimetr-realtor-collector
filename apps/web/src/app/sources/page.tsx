@@ -1,6 +1,6 @@
 import { ApiButton } from '../../components/api-button';
 import { SourceForm } from '../../components/source-form';
-import { nextBinaRunAt, readBinaCycleHours, readBinaSummary } from '../../lib/bina-view';
+import { isContinuousBinaMode, nextBinaRunAt, readBinaCycleHours, readBinaSummary } from '../../lib/bina-view';
 import { getRepositories } from '../../lib/db';
 import { getLang } from '../../lib/lang';
 import { formatDateTime, t, tEnum } from '../../lib/i18n';
@@ -11,6 +11,7 @@ export default async function Sources() {
   const lang = await getLang();
   const repos = getRepositories();
   const cycleHours = readBinaCycleHours(process.env.BINA_CYCLE_HOURS);
+  const continuous = isContinuousBinaMode(process.env);
   const rows = repos.sources.list();
   const latestRuns = new Map<number, ReturnType<typeof repos.runs.list>[number]>();
   for (const run of repos.runs.list()) if (!latestRuns.has(run.sourceId)) latestRuns.set(run.sourceId, run);
@@ -30,18 +31,20 @@ export default async function Sources() {
           const run = latestRuns.get(source.id);
           const summary = readBinaSummary(run ? summaries.get(run.id) : undefined);
           const bina = source.type === 'bina_agency';
+          const binaStats = bina && repos.binaListings ? repos.binaListings.stats(source.id) : undefined;
           return <tr key={source.id}>
-            <td>{source.name}{bina && <><br /><span className="muted">{t(lang, 'bina.automatic')} · {t(lang, 'bina.interval', { hours: cycleHours })}</span></>}</td>
+            <td>{source.name}{bina && <><br /><span className="muted">{continuous ? t(lang, 'bina.modeContinuous') : `${t(lang, 'bina.automatic')} · ${t(lang, 'bina.interval', { hours: cycleHours })}`}</span></>}</td>
             <td>{bina ? t(lang, 'sourceType.binaAgency') : source.type}<br /><span className="muted">{source.language}</span></td>
             <td>{source.locator}</td>
-            <td>{source.maxPages} {t(lang, 'sources.pages')} · {t(lang, 'sources.depth')} {source.maxDepth}<br />{source.delayMs} ms</td>
+            <td>{source.maxPages === 0 ? '∞ continuous' : `${source.maxPages} ${t(lang, 'sources.pages')}`} · {t(lang, 'sources.depth')} {source.maxDepth}<br />{source.delayMs} ms</td>
             <td>
               <span className="badge">{source.killSwitch ? t(lang, 'sources.killSwitch') : source.enabled ? t(lang, 'sources.enabled') : t(lang, 'sources.disabled')}</span>
               {bina && run && <div className="muted">
                 {t(lang, 'bina.lastRun')}: {formatDateTime(lang, run.finishedAt ?? run.startedAt)} · {tEnum(lang, 'run', run.status)}<br />
-                {t(lang, 'bina.nextRun')}: {formatDateTime(lang, nextBinaRunAt(run, cycleHours))}<br />
+                {t(lang, 'bina.nextRun')}: {formatDateTime(lang, nextBinaRunAt(run, cycleHours, continuous))}<br />
                 {t(lang, 'bina.pagesChecked')}: {run.pagesChecked} · {t(lang, 'bina.agenciesFound')}: {summary.agenciesFound}<br />
                 {t(lang, 'bina.newContacts')}: {summary.newContacts} · {t(lang, 'bina.duplicates')}: {summary.duplicates} · {t(lang, 'bina.privateSkipped')}: {summary.privateSellers}
+                {binaStats && binaStats.totalDiscovered > 0 && <><br />{t(lang, 'bina.discovered')}: {binaStats.totalDiscovered} · {t(lang, 'bina.professional')}: {binaStats.professionalCount}</>}
                 {run.error && <><br />{t(lang, 'bina.stopReason')}: {run.error}</>}
               </div>}
             </td>

@@ -122,6 +122,45 @@ describe('repositories', () => {
     expect(repos.contacts.list('', { type: 'agent', isForeign: false })).toHaveLength(1);
   });
 
+  it('tracks delta listings, checkpointing, and stats for continuous collection', () => {
+    const repos = setup();
+    const saved = repos.sources.create({ ...source, type: 'bina_agency' });
+
+    // Discovered batch
+    const count = repos.binaListings.upsertDiscovered(saved.id, [
+      'https://bina.az/items/101',
+      'https://bina.az/items/102',
+      'https://bina.az/items/103',
+    ]);
+    expect(count).toBe(3);
+
+    const pending = repos.binaListings.getUnchecked(saved.id, 2);
+    expect(pending).toHaveLength(2);
+    expect(pending[0]?.canonicalUrl).toBe('https://bina.az/items/101');
+
+    // Mark checked
+    repos.binaListings.markChecked(saved.id, 'https://bina.az/items/101', {
+      sellerType: 'agency',
+      phone: '+994501234567',
+      fingerprint: 'fp-101',
+      status: 'checked',
+    });
+    repos.binaListings.markChecked(saved.id, 'https://bina.az/items/102', {
+      sellerType: 'owner',
+      status: 'skipped_owner',
+    });
+
+    const stats = repos.binaListings.stats(saved.id);
+    expect(stats.totalDiscovered).toBe(3);
+    expect(stats.totalChecked).toBe(2);
+    expect(stats.professionalCount).toBe(1);
+    expect(stats.privateSkippedCount).toBe(1);
+    expect(stats.pendingCount).toBe(1);
+
+    expect(repos.binaListings.wasUrlCheckedRecently(saved.id, 'https://bina.az/items/101', '2020-01-01T00:00:00.000Z')).toBe(true);
+    expect(repos.binaListings.wasUrlCheckedRecently(saved.id, 'https://bina.az/items/103', '2020-01-01T00:00:00.000Z')).toBe(false);
+  });
+
   it('seeds demo keywords and a fixture source idempotently', () => {
     const repos = setup();
     const first = seedDemoData(db!);

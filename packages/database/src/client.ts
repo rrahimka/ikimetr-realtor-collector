@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const initialMigrationPath = resolve(packageRoot, 'drizzle/0000_initial.sql');
 const binaBlockedMigrationPath = resolve(packageRoot, 'drizzle/0001_bina_blocked.sql');
+const binaContinuousMigrationPath = resolve(packageRoot, 'drizzle/0002_bina_continuous.sql');
+const multiSourceMigrationPath = resolve(packageRoot, 'drizzle/0003_multi_source.sql');
 
 export type CollectorDatabase = Database.Database;
 export const DEFAULT_DATABASE_PATH = './data/collector.db';
@@ -24,8 +26,19 @@ export function createDatabase(path = process.env.DATABASE_URL ?? DEFAULT_DATABA
   db.pragma('journal_mode = WAL'); db.pragma('foreign_keys = ON'); db.pragma('busy_timeout = 5000');
   try {
     db.exec(readFileSync(initialMigrationPath, 'utf8'));
-    const version = db.pragma('user_version', { simple: true }) as number;
-    if (version < 1) db.exec(readFileSync(binaBlockedMigrationPath, 'utf8'));
+    let version = db.pragma('user_version', { simple: true }) as number;
+    if (version < 1) {
+      db.exec(readFileSync(binaBlockedMigrationPath, 'utf8'));
+      version = db.pragma('user_version', { simple: true }) as number;
+    }
+    if (version < 2) {
+      db.exec(readFileSync(binaContinuousMigrationPath, 'utf8'));
+      version = db.pragma('user_version', { simple: true }) as number;
+    }
+    if (version < 3) {
+      db.exec(readFileSync(multiSourceMigrationPath, 'utf8'));
+    }
+
     const violations = db.pragma('foreign_key_check') as unknown[];
     if (violations.length > 0) throw new Error('Database migration left foreign-key violations');
   } catch (error) {

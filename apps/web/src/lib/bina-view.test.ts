@@ -32,7 +32,8 @@ describe('nextBinaRunAt', () => {
   it('uses the configured cycle instead of displaying a hard-coded six hours', () => {
     expect(readBinaCycleHours('12')).toBe(12);
     expect(nextBinaRunAt({ status: 'completed', finishedAt: '2026-08-25T00:00:00.000Z' }, 12)).toBe('2026-08-25T12:00:00.000Z');
-    expect(readBinaCycleHours('1')).toBe(6);
+    expect(readBinaCycleHours('1')).toBe(1);
+    expect(readBinaCycleHours('0')).toBe(1);
   });
 
   it('shows recovered failures as immediately eligible', () => {

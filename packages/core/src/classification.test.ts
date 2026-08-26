@@ -19,6 +19,33 @@ describe('classifyEvidence', () => {
     vi.useRealTimers();
   });
 
+  it('prioritizes explicit site seller type over conflicting heuristic text', () => {
+    // Text mentions 'owner selling', but explicit site says 'agency'
+    const agencyResult = classifyEvidence({
+      text: 'Mülkiyyətçi şəxsi mənzil satışı',
+      explicitSellerType: 'agency',
+    });
+    expect(agencyResult.type).toBe('agency');
+    expect(agencyResult.reasons).toContain('explicit_site_seller_type');
+    expect(agencyResult.confidence).toBeGreaterThanOrEqual(0.85);
+
+    // Text mentions 'agentlik', but explicit site says 'owner'
+    const ownerResult = classifyEvidence({
+      text: 'Agentlik yanında kirayə',
+      explicitSellerType: 'owner',
+    });
+    expect(ownerResult.type).toBe('owner');
+    expect(ownerResult.reasons).toContain('explicit_site_seller_type');
+
+    // Explicit agent
+    const agentResult = classifyEvidence({
+      text: 'Vasitəçi xidməti',
+      explicitSellerType: 'agent',
+    });
+    expect(agentResult.type).toBe('agent');
+    expect(agentResult.reasons).toContain('explicit_site_seller_type');
+  });
+
   it('keeps non-professional sale text uncertain', () => {
     const result = classifyEvidence({ text: 'Owner selling one apartment in Baku', occurrenceCount: 1 });
     expect(result.type).toBe('owner');

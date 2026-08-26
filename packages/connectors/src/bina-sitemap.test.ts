@@ -161,14 +161,24 @@ describe('discoverBinaListingUrlsFromSitemaps', () => {
     })).rejects.toThrow('Bina sitemap exceeds the loc limit');
   });
 
-  it('returns no URLs when an allowed urlset contains no canonical public listing paths', async () => {
-    const fetch: BinaSitemapFetch = () => Promise.resolve(xmlResponse(
-      '<urlset><url><loc>https://bina.az/agents/1</loc></url></urlset>',
-    ));
-    await expect(discoverBinaListingUrlsFromSitemaps({
+  it('returns all URLs when maxListings is 0 (unlimited continuous mode)', async () => {
+    const fetch: BinaSitemapFetch = () => Promise.resolve(xmlResponse([
+      '<urlset>',
+      '<url><loc>https://bina.az/items/201</loc></url>',
+      '<url><loc>https://bina.az/items/202</loc></url>',
+      '<url><loc>https://bina.az/items/203</loc></url>',
+      '</urlset>',
+    ].join('')));
+
+    const urls = await discoverBinaListingUrlsFromSitemaps({
       robotsText: `Sitemap: ${indexUrl}`,
-      maxListings: 5,
+      maxListings: 0,
       fetch,
-    })).resolves.toEqual([]);
+    });
+    expect(urls).toEqual([
+      'https://bina.az/items/201',
+      'https://bina.az/items/202',
+      'https://bina.az/items/203',
+    ]);
   });
 });

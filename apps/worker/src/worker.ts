@@ -55,7 +55,7 @@ export async function processRun(
   const recheckSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000).toISOString();
   const result = await connector(source, {
     shouldStop: () => stopRequest(repos, run.id, source.id),
-    shouldProcessUrl: (url) => !repos.evidence.wasUrlSeenSince(source.id, url, recheckSince),
+    shouldProcessUrl: (url) => !repos.evidence.wasUrlSeenSince(source.id, url, recheckSince) && !repos.binaListings?.wasUrlCheckedRecently(source.id, url, recheckSince),
   });
   const binaResult = isBinaResult(source, result) ? result : undefined;
   const terminalStop = binaResult?.stopReason;
@@ -96,7 +96,11 @@ export async function processRun(
       found += 1;
       unique.add(phone.normalized);
       const existed = Boolean(repos.contacts.byPhone(phone.normalized));
-      const classification = classifyEvidence({ text: item.excerpt, occurrenceCount: extracted.length });
+      const classification = classifyEvidence({
+        text: item.excerpt,
+        occurrenceCount: extracted.length,
+        explicitSellerType: item.explicitSellerType,
+      });
       repos.contacts.persistEvidence({
         normalizedPhone: phone.normalized,
         isForeign: phone.isForeign,
@@ -111,13 +115,23 @@ export async function processRun(
           username: item.username ?? null,
           platform: item.platform,
           fingerprint: `${item.fingerprint}-${phone.normalized}`,
+          explicitSellerType: item.explicitSellerType,
         },
         classification,
       });
+      if (source.type === 'bina_agency') {
+        repos.binaListings?.markChecked(source.id, item.sourceUrl, {
+          sellerType: item.explicitSellerType ?? 'agent',
+          phone: phone.normalized,
+          fingerprint: item.fingerprint,
+          status: 'checked',
+        });
+      }
       if (existed) duplicates += 1;
       else newContacts += 1;
     }
   }
+
 
   const counters = { pagesChecked: result.pagesChecked, phonesFound: found, uniquePhones: unique.size };
   if (binaResult) {
