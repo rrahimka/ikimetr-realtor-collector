@@ -157,46 +157,52 @@ async function visibleText(container: Page | Locator, selector: string): Promise
   return text === '' ? undefined : text;
 }
 
-const SELLER_TYPE_LABEL_SELECTOR = ':text-matches("Mülkiyyətçi|Sahibindən|Agentlik|Vasitəçi", "u")';
 const SELLER_TYPE_LABEL_EXACT_RE = /^(?:Mülkiyyətçi|Sahibindən|Agentlik|Vasitəçi)(?:\s*\([^)]*\))?$/u;
-const REVEAL_TEXT_SELECTOR = ':text-matches("^Nömrəni göstər$", "u")';
+const REVEAL_BUTTON_TEXT = 'Nömrəni göstər';
 
-async function findSellerByTypeLabel(page: Page): Promise<{ card: Locator; reveal?: Locator; sellerType: ExplicitBinaSellerType } | undefined> {
-  const labels = page.locator(SELLER_TYPE_LABEL_SELECTOR);
-  const total = Math.min(await labels.count(), 8);
+type TaggedSellerType = 'owner' | 'agency' | 'agent';
+
+async function tagSellerCards(page: Page): Promise<void> {
+  await page.evaluate(({ labelPattern, revealText }: { labelPattern: string; revealText: string }) => {
+    const labelRe = new RegExp(labelPattern, 'u');
+    const exactText = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const labelEls = Array.from(document.querySelectorAll('span, div, p, a, strong, b, button'))
+      .filter((el) => labelRe.test(exactText(el)))
+      .filter((el) => el.closest('.item-card') === null) as HTMLElement[];
+    for (const labelEl of labelEls) {
+      const rawLabel = exactText(labelEl);
+      const isOwner = /^Mülkiyyətçi|^Sahibindən/u.test(rawLabel);
+      let scope: HTMLElement | null = labelEl.parentElement;
+      for (let depth = 0; scope !== null && depth < 6; depth += 1, scope = scope.parentElement) {
+        if (scope.closest('.item-card') !== null) break;
+        const reveal = isOwner
+          ? null
+          : (Array.from(scope.querySelectorAll('button, a, div, span'))
+            .find((el) => exactText(el) === revealText && el.closest('.item-card') === null) as HTMLElement | undefined);
+        if (!isOwner && !reveal) continue;
+        scope.setAttribute('data-ikimetr-card', isOwner ? 'owner' : /^Agentlik/u.test(rawLabel) ? 'agency' : 'agent');
+        if (reveal) reveal.setAttribute('data-ikimetr-reveal', '');
+        break;
+      }
+    }
+  }, { labelPattern: SELLER_TYPE_LABEL_EXACT_RE.source, revealText: REVEAL_BUTTON_TEXT });
+}
+
+async function findTaggedSeller(page: Page): Promise<{ card: Locator; reveal?: Locator; sellerType: ExplicitBinaSellerType } | undefined> {
+  const cards = page.locator('[data-ikimetr-card]');
+  const total = await cards.count();
   for (let index = 0; index < total; index += 1) {
-    const label = labels.nth(index);
-    if (!await label.isVisible().catch(() => false)) continue;
-    if (await label.locator('xpath=ancestor-or-self::*[contains(concat(" ", normalize-space(@class), " "), " item-card ")]').count() > 0) continue;
-    let sellerType: ExplicitBinaSellerType;
-    try {
-      const rawLabel = (await label.innerText()).trim();
-      if (!SELLER_TYPE_LABEL_EXACT_RE.test(rawLabel)) continue;
-      sellerType = detectExplicitBinaSellerType(rawLabel);
-    } catch {
-      continue;
+    const card = cards.nth(index);
+    if (!await card.isVisible().catch(() => false)) continue;
+    const tagged = (await card.getAttribute('data-ikimetr-card')) as TaggedSellerType | null;
+    if (tagged !== 'owner' && tagged !== 'agency' && tagged !== 'agent') continue;
+    if (tagged === 'owner') return { card, sellerType: 'owner' };
+    const reveals = card.locator('[data-ikimetr-reveal]');
+    for (let revealIndex = 0; revealIndex < await reveals.count(); revealIndex += 1) {
+      const reveal = reveals.nth(revealIndex);
+      if (await reveal.isVisible().catch(() => false)) return { card, reveal, sellerType: tagged };
     }
-    if (sellerType === 'unknown') continue;
-    let scope = label;
-    for (let depth = 0; depth < 5; depth += 1) {
-      scope = scope.locator('xpath=..');
-      if (!(await scope.isVisible().catch(() => false))) break;
-      if (sellerType === 'owner') {
-        return { card: scope, sellerType };
-      }
-      const roleReveals = scope
-        .getByRole('button', { name: PHONE_BUTTON_NAME, exact: true })
-        .or(scope.getByRole('link', { name: PHONE_BUTTON_NAME, exact: true }));
-      const textReveals = scope.locator(REVEAL_TEXT_SELECTOR);
-      const reveals = (await roleReveals.count()) > 0 ? roleReveals : textReveals;
-      for (let revealIndex = 0; revealIndex < await reveals.count(); revealIndex += 1) {
-        const reveal = reveals.nth(revealIndex);
-        if (await reveal.isVisible().catch(() => false)) return { card: scope, reveal, sellerType };
-      }
-    }
-    if (sellerType === 'agency' || sellerType === 'agent') {
-      return { card: label.locator('xpath=..'), sellerType };
-    }
+    return { card, sellerType: tagged };
   }
   return undefined;
 }
@@ -236,8 +242,9 @@ async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: L
     }
   }
 
-  const semanticSeller = await findSellerByTypeLabel(page);
-  if (semanticSeller) return semanticSeller;
+  await tagSellerCards(page);
+  const taggedSeller = await findTaggedSeller(page);
+  if (taggedSeller) return taggedSeller;
 
   // Check whole page for owner marker if no seller card was matched
   const body = page.locator('body');
