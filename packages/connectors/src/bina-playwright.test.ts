@@ -244,6 +244,30 @@ describe('runBinaAgencyConnector', () => {
     expect(result.items[0]).toMatchObject({ rawPhone: '+994554433221' });
   });
 
+  it('accepts a real-DOM agency listing whose phone renders asynchronously after the click', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/')
+          ? `<!doctype html><html><head><meta charset="utf-8"></head><body>
+             <h1>Satılır 3 otaqlı — Yasamal</h1>
+             <div class="seller-box">
+               <div class="name-row"><span>Aysel V.</span></div>
+               <span class="type-label">Agentlik</span>
+               <button type="button" onclick="setTimeout(() => { const a=document.querySelector('a[href^=\\'tel:\\']'); a.hidden=false; }, 300)">Nömrəni göstər</button>
+               <a href="tel:+994 51 222 33 44" hidden>+994 51 222 33 44</a>
+             </div>
+           </body></html>`
+          : searchHtml([504]),
+      });
+    });
+
+    expect(result.outcomes.accepted).toBe(1);
+    expect(result.items[0]).toMatchObject({ rawPhone: '+994512223344' });
+  });
+
   it('uses an official robots-declared sitemap instead of relying on search-page listing links', async () => {
     let searchVisited = false;
     const sitemapUrl = 'https://bina.azstatic.com/uploads/sitemaps/sitemap_items.xml';

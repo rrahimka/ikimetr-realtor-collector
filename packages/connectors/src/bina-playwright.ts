@@ -471,7 +471,11 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
         await options.observePage?.(page, 'before_phone_reveal');
         await seller.reveal.click();
         await options.observePage?.(page, 'after_phone_reveal');
-        const visiblePhone = await readVisiblePhone(seller.card);
+        let visiblePhone = await readVisiblePhone(seller.card);
+        for (let poll = 0; !visiblePhone && poll < 8; poll += 1) {
+          await new Promise(resolve => setTimeout(resolve, 400));
+          visiblePhone = await readVisiblePhone(seller.card);
+        }
         if (!visiblePhone) {
           outcomes.missing_phone += 1;
           consecutiveTechnicalErrors = 0;
