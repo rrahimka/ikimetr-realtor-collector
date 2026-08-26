@@ -157,7 +157,9 @@ async function visibleText(container: Page | Locator, selector: string): Promise
   return text === '' ? undefined : text;
 }
 
-const SELLER_TYPE_LABEL_SELECTOR = ':text-matches("^(Mülkiyyətçi|Sahibindən|Agentlik|Vasitəçi)$", "u")';
+const SELLER_TYPE_LABEL_SELECTOR = ':text-matches("Mülkiyyətçi|Sahibindən|Agentlik|Vasitəçi", "u")';
+const SELLER_TYPE_LABEL_EXACT_RE = /^(?:Mülkiyyətçi|Sahibindən|Agentlik|Vasitəçi)(?:\s*\([^)]*\))?$/u;
+const REVEAL_TEXT_SELECTOR = ':text-matches("^Nömrəni göstər$", "u")';
 
 async function findSellerByTypeLabel(page: Page): Promise<{ card: Locator; reveal?: Locator; sellerType: ExplicitBinaSellerType } | undefined> {
   const labels = page.locator(SELLER_TYPE_LABEL_SELECTOR);
@@ -168,7 +170,9 @@ async function findSellerByTypeLabel(page: Page): Promise<{ card: Locator; revea
     if (await label.locator('xpath=ancestor-or-self::*[contains(concat(" ", normalize-space(@class), " "), " item-card ")]').count() > 0) continue;
     let sellerType: ExplicitBinaSellerType;
     try {
-      sellerType = detectExplicitBinaSellerType((await label.innerText()).trim());
+      const rawLabel = (await label.innerText()).trim();
+      if (!SELLER_TYPE_LABEL_EXACT_RE.test(rawLabel)) continue;
+      sellerType = detectExplicitBinaSellerType(rawLabel);
     } catch {
       continue;
     }
@@ -180,9 +184,12 @@ async function findSellerByTypeLabel(page: Page): Promise<{ card: Locator; revea
       if (sellerType === 'owner') {
         return { card: scope, sellerType };
       }
-      const reveals = scope
+      const roleReveals = scope
         .getByRole('button', { name: PHONE_BUTTON_NAME, exact: true })
         .or(scope.getByRole('link', { name: PHONE_BUTTON_NAME, exact: true }));
+      const textReveals = scope.locator(REVEAL_TEXT_SELECTOR);
+      const revealCandidates = roleReveals.count().then(async (roleCount) => (roleCount > 0 ? roleReveals : textReveals));
+      const reveals = await revealCandidates;
       for (let revealIndex = 0; revealIndex < await reveals.count(); revealIndex += 1) {
         const reveal = reveals.nth(revealIndex);
         if (await reveal.isVisible().catch(() => false)) return { card: scope, reveal, sellerType };

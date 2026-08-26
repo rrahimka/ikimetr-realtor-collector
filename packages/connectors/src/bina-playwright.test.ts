@@ -268,6 +268,39 @@ describe('runBinaAgencyConnector', () => {
     expect(result.items[0]).toMatchObject({ rawPhone: '+994512223344' });
   });
 
+  it('accepts a live-style agency page with a non-button reveal control and suffixed label', async () => {
+    const result = await runWithFixture(async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: path.startsWith('/items/')
+          ? `<!doctype html><html><head><meta charset="utf-8"></head><body>
+             <h1>Satılır 3 otaqlı — Nərimanov</h1>
+             <div class="owner-area">
+               <div class="agent-row">
+                 <span>Zəfər M</span>
+                 <span>Vasitəçi (agent)</span>
+                 <div class="show-phone" onclick="const a=this.parentElement.querySelector('a[href^=\\'tel:\\']'); a.hidden=false">Nömrəni göstər</div>
+                 <span>+994 •••</span>
+                 <a href="tel:+994 50 987 65 43" hidden>+994 50 987 65 43</a>
+               </div>
+               <div class="agency-row">
+                 <a>Baku Home</a>
+                 <span>Agentlik</span>
+                 <span>Hər gün: 10:00 – 19:00</span>
+               </div>
+             </div>
+           </body></html>`
+          : searchHtml([505]),
+      });
+    });
+
+    expect(result.outcomes.accepted).toBe(1);
+    expect(result.outcomes.missing_phone).toBe(0);
+    expect(result.items[0]).toMatchObject({ rawPhone: '+994509876543' });
+  });
+
   it('uses an official robots-declared sitemap instead of relying on search-page listing links', async () => {
     let searchVisited = false;
     const sitemapUrl = 'https://bina.azstatic.com/uploads/sitemaps/sitemap_items.xml';
