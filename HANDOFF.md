@@ -1,36 +1,44 @@
-# Handoff — 2026-08-26 Bina live-acceptance & full verification checkpoint
+# Handoff — Final Production Completion Checkpoint
 
 ## Repository state
 
 - Branch: `feature/bina-agency-pilot`
 - Verification suite (all exit 0):
-  - `pnpm test` — 253/253 tests pass across 24 test suites
+  - `pnpm test` — 267/267 tests pass across 25 test suites
   - `pnpm typecheck` — clean (5 of 5 workspace packages)
-  - `pnpm lint` — clean
+  - `pnpm lint` — clean (0 errors, 0 warnings)
   - `pnpm build` — clean Next.js app + worker builds
   - `pnpm test:smoke` — 2/2 end-to-end scenarios pass (`collector pipeline: login → fixture source → run → worker → contact → CSV` and `language toggle and CSV import report`)
-  - `git diff --check` — clean
+  - `git diff --check` — clean (no trailing whitespace or conflict markers)
 
-## Completed in this session
+## Production Improvements Completed
 
-1. **Sitemap Discovery Optimization**:
-   - Prioritized item sitemaps (`sitemap_items*.xml`) over multi-megabyte category index files.
-   - Sorted child item sitemaps in descending order (`sitemap_items3.xml` first) so latest listings are discovered in <0.5s instead of ~60s.
-   - Added fast pre-filtering for `/items/` before calling URL validator, eliminating exception overhead on 50k+ category locs.
-   - Added `shouldProcessUrl` filter option to `discoverBinaListingUrlsFromSitemaps` and wired it through `bina-playwright.ts`, worker connector runner, and 7-day recheck filter.
+1. **Eliminated Generic Web Connector Error & Legacy Source Routing**:
+   - Upgraded existing legacy sources in SQLite database via migration `0004_fix_source_types.sql` (`tap_az`, `arenda_az`, `bina_agency`, `stop_az`).
+   - Implemented automatic legacy routing in `apps/worker/src/connectors.ts` to dispatch recognized Azerbaijani domains (`tap.az`, `arenda.az`, `stop.az`, `bina.az`) to their dedicated connectors even if stored as legacy `website` or `listing_page`.
 
-2. **Real-DOM Reveal & Selector Hardening**:
-   - Modernized seller reveal interaction in `packages/connectors/src/bina-playwright.ts` to support bina.az React markup (`[data-stat="product-call-btn"]`, `[data-cy="bottom-phone"]`, `[data-cy="owner-info"]`, `[data-cy="agency-info"]`, `[data-stat="agency-address"]`).
-   - Added container fallback and `try/catch` with 5s timeout on reveal clicks to prevent stalls.
-   - Updated `readVisiblePhone` to read both text nodes and dynamic `a[href^="tel:"]` elements created upon reveal click.
-   - Confirmed on real bina.az pages: phone extraction (`+994 50 992 57 83`, `+994 55 241 41 31`), agency/agent detection (`Vasitəçi`, `Agentlik`), and private owner skipping (`Mülkiyyətçi` → `skipped_owner`).
+2. **Tier A Production Connectors (Bina, Tap, Arenda)**:
+   - **Bina.az**: Playwright connector with robots-declared sitemaps, seller card detection, dynamic reveal, private owner skipping (`Mülkiyyətçi`), agency extraction, and Cloudflare challenge isolation.
+   - **Tap.az**: Cheerio-based connector with listing URL discovery, seller card classification (`Mağaza`, `Vasitəçi` vs `Mülkiyyətçi` skip), support hotline filtering (`+994125261919`), `shouldStop` cancellation, and phone normalization.
+   - **Arenda.az**: Cheerio-based connector with modern slug discovery (`/kiraye-`, `/alqi-satqi-`, `/satiliq-`, `/elan/`, `-otaqli-`), seller card detection (`Namiq (Əmlak sahibi)` vs agency), hotline filtering (`+994705962424`), and phone normalization.
+   - **Stop.az**: Checked and marked as DEAD / offline based on live network probes.
+   - **Rule Verification**: Unified contract applied across all connectors: `accepted`, `private_seller` skip, public phone extraction, Azerbaijan phone normalization, deduplication, SQLite storage. Zero STOCK ADS present.
 
-3. **Database, Worker & CSV Verification**:
-   - Verified pipeline end-to-end: listing checks → `bina_listings` updates (`skipped_owner`, `checked`, `failed`) → phone normalization (`+994...`) → deduplication → SQLite contacts repository.
-   - Verified RFC4180 CSV export generation (`/api/contacts/export` via `contactsCsv()`) with UTF-8 BOM, formula escaping, and column structure.
-   - Increased smoke runner worker readiness timeout to 120s for reliable cold-start execution on WSL2 NTFS.
+3. **Canonical Source Registry (24 Azerbaijani Domains)**:
+   - Created `packages/core/src/source-registry.ts` and `source-registry.test.ts` covering 24 real estate domains with operational statuses (`SUPPORTED_VERIFIED`, `SUPPORTED_DEGRADED`, `CANDIDATE`, `AGGREGATOR`, `PROTECTED`, `UNSUPPORTED`, `DEAD`).
+   - Hard rule enforced: STOCK ADS does not exist and is never included.
 
-## Operational note
+4. **Web UI Modern Light Palette & Design System**:
+   - Implemented high-contrast, clean light theme in `apps/web/src/app/globals.css` with semantic tokens (`--bg`, `--panel`, `--line`, `--text`, `--accent`, `--success`, `--warning`, `--danger`, `--info`).
+   - Responsive sidebar with elevated language bar, structured form grids, badges, and accessible data tables.
 
-- Upstream Cloudflare throttling / managed challenges are properly handled with `protection_interstitial` / `captcha` stop reasons and database cooldown rules.
-- When performing manual test runs: keep `BINA_CONTINUOUS_MODE=false` and `BINA_MAX_LISTINGS=5`.
+5. **Multi-Stage Button Feedback & Toast System**:
+   - `ApiButton` with 5 states: `IDLE -> PRESSED -> LOADING -> ACKNOWLEDGED -> SUCCESS / ERROR`.
+   - Double-click and double-run protection with disabled states and loading labels.
+   - Integrated client-side toast notifications (`ToastContainer`, `showToast`) for actions (run creation, source add, kill switch, CSV export).
+
+6. **Auto-Updating Runs & Source Status**:
+   - Created `AutoRefresh` component in `apps/web/src/components/auto-refresh.tsx` to automatically poll and update active runs without requiring manual F5 reload.
+
+7. **Full RU/AZ Localization**:
+   - Updated `apps/web/src/lib/i18n.ts` with comprehensive Russian and Azerbaijani translations for all source types, operational statuses, button labels, and toast messages.

@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { load } from 'cheerio';
 import { normalizePhone } from '@ikimetr/core';
-import { safeFetch, type FetchDependencies } from './generic-website.js';
-import { normalizeBinaText } from './bina.js';
-import { extractAzCity } from './tap.js';
-import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types.js';
+import { safeFetch, type FetchDependencies } from './generic-website';
+import { normalizeBinaText } from './bina';
+import { extractAzCity } from './tap';
+import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types';
 
 const STOP_HOSTS = new Set(['stop.az', 'www.stop.az']);
 
@@ -13,11 +13,11 @@ export type ExplicitStopSellerType = 'agency' | 'agent' | 'owner' | 'unknown';
 export function validateStopUrl(input: string): string {
   let url: URL;
   try {
-    url = new URL(input);
+    url = new URL(input.startsWith('http') ? input : `https://${input}`);
   } catch {
     throw new Error('Stop.az URL is not valid');
   }
-  if (url.protocol !== 'https:' || !STOP_HOSTS.has(url.hostname)) {
+  if (url.protocol !== 'https:' || !STOP_HOSTS.has(url.hostname.toLowerCase())) {
     throw new Error('Stop.az URL must use https://stop.az or https://www.stop.az');
   }
   return url.toString();
@@ -25,9 +25,9 @@ export function validateStopUrl(input: string): string {
 
 export function detectExplicitStopSellerType(text: string): ExplicitStopSellerType {
   const normalized = normalizeBinaText(text);
-  if (/(?:^|[^\p{L}])(?:agentlik|emlak agentliyi|agency)(?:$|[^\p{L}])/u.test(normalized)) return 'agency';
-  if (/(?:^|[^\p{L}])(?:vasiteci|makler|rieltor|agent)(?:$|[^\p{L}])/u.test(normalized)) return 'agent';
-  if (/(?:^|[^\p{L}])(?:mulkiyyetci|sahibinden|sexsi|ozum)(?:$|[^\p{L}])/u.test(normalized)) return 'owner';
+  if (/(?:^|[^\p{L}])(?:agentlik|emlak agentliyi|agency|ofis|mmc|group)(?:$|[^\p{L}])/u.test(normalized)) return 'agency';
+  if (/(?:^|[^\p{L}])(?:vasiteci|makler|rieltor|agent|emlakci)(?:$|[^\p{L}])/u.test(normalized)) return 'agent';
+  if (/(?:^|[^\p{L}])(?:mulkiyyetci|sahibinden|sexsi|ozum|ev sahibi|owner)(?:$|[^\p{L}])/u.test(normalized)) return 'owner';
   return 'unknown';
 }
 
@@ -45,7 +45,7 @@ export function discoverStopListingUrls(html: string, baseUrl = 'https://stop.az
     try {
       const full = new URL(href, baseUrl).toString();
       const parsed = new URL(full);
-      if (STOP_HOSTS.has(parsed.hostname) && (parsed.pathname.includes('/elan/') || parsed.pathname.includes('/item/'))) {
+      if (STOP_HOSTS.has(parsed.hostname.toLowerCase()) && (parsed.pathname.includes('/elan/') || parsed.pathname.includes('/item/'))) {
         const canonical = full.split('?')[0]!;
         if (!seen.has(canonical)) {
           seen.add(canonical);
@@ -62,7 +62,7 @@ export function discoverStopListingUrls(html: string, baseUrl = 'https://stop.az
 
 export function parseStopListingPage(html: string, pageUrl: string): ConnectorEvidence | null {
   const $ = load(html);
-  const contactText = $('.contact, .author, .seller, .user-info').text() || $('body').text();
+  const contactText = $('.contact, .author, .seller, .user-info, .seller-info').text() || $('body').text();
   const sellerType = detectExplicitStopSellerType(contactText);
 
   if (sellerType === 'owner') return null;
@@ -77,7 +77,7 @@ export function parseStopListingPage(html: string, pageUrl: string): ConnectorEv
     const match = /wa\.me\/(\d{7,15})/.exec(href);
     if (match?.[1]) phones.push(match[1]);
   });
-  $('.phone, .tel').each((_i, el) => {
+  $('.phone, .tel, .phones').each((_i, el) => {
     const txt = $(el).text().trim();
     if (txt) phones.push(txt);
   });
@@ -97,9 +97,9 @@ export function parseStopListingPage(html: string, pageUrl: string): ConnectorEv
   if (!validPhone || !validPhone.normalized) return null;
 
   const title = $('h1').first().text().trim();
-  const authorName = $('.author-name, .seller-name').first().text().trim() || undefined;
+  const authorName = $('.author-name, .seller-name, .author').first().text().trim() || undefined;
   const isAgency = sellerType === 'agency';
-  const city = extractAzCity($('.city, .location').text() || $('body').text());
+  const city = extractAzCity($('.city, .location, h1').text() || $('body').text());
   const excerpt = `${title} ${contactText}`.slice(0, 500).replace(/\s+/g, ' ').trim();
 
   const evidence: ConnectorEvidence = {
@@ -130,6 +130,8 @@ export async function crawlStopAz(options: CrawlOptions, deps: FetchDependencies
   let pagesChecked = 1;
 
   for (const url of listingUrls) {
+    if (options.shouldStop && (await options.shouldStop())) break;
+    if (options.shouldProcessUrl && !(await options.shouldProcessUrl(url))) continue;
     if (options.delayMs > 0) await new Promise(r => setTimeout(r, options.delayMs));
     try {
       const page = await safeFetch(url, deps);

@@ -1,23 +1,24 @@
 import { createHash } from 'node:crypto';
 import { load } from 'cheerio';
 import { normalizePhone } from '@ikimetr/core';
-import { safeFetch, type FetchDependencies } from './generic-website.js';
-import { normalizeBinaText } from './bina.js';
-import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types.js';
+import { safeFetch, type FetchDependencies } from './generic-website';
+import { normalizeBinaText } from './bina';
+import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types';
 
 const TAP_HOSTS = new Set(['tap.az', 'www.tap.az']);
 const LISTING_PATH = /^\/elanlar\/(?:.*\/)?(\d+)\/?$/;
+const TAP_PLATFORM_HOTLINES = new Set(['+994125261919', '+994125261918']);
 
 export type ExplicitTapSellerType = 'agency' | 'agent' | 'owner' | 'unknown';
 
 export function validateTapUrl(input: string, kind: 'search' | 'listing' = 'search'): string {
   let url: URL;
   try {
-    url = new URL(input);
+    url = new URL(input.startsWith('http') ? input : `https://${input}`);
   } catch {
     throw new Error('Tap.az URL is not valid');
   }
-  if (url.protocol !== 'https:' || !TAP_HOSTS.has(url.hostname)) {
+  if (url.protocol !== 'https:' || !TAP_HOSTS.has(url.hostname.toLowerCase())) {
     throw new Error('Tap.az URL must use https://tap.az or https://www.tap.az');
   }
   if (kind === 'listing') {
@@ -25,18 +26,21 @@ export function validateTapUrl(input: string, kind: 'search' | 'listing' = 'sear
     if (!match) throw new Error('Tap.az listing URL format invalid');
     return `https://tap.az/elanlar/${match[1]}`;
   }
+  if (url.pathname === '' || url.pathname === '/') {
+    return 'https://tap.az/elanlar/dasinmaz-emlak';
+  }
   return url.toString();
 }
 
 export function detectExplicitTapSellerType(text: string): ExplicitTapSellerType {
   const normalized = normalizeBinaText(text);
-  if (/(?:^|[^\p{L}])(?:magaza|sirket|agentlik|emlak agentliyi|agency|diller)(?:$|[^\p{L}])/u.test(normalized)) {
+  if (/(?:^|[^\p{L}])(?:magaza|sirket|agentlik|emlak agentliyi|agency|diller|mmc|group)(?:$|[^\p{L}])/u.test(normalized)) {
     return 'agency';
   }
-  if (/(?:^|[^\p{L}])(?:vasiteci|makler|rieltor|emlakci|agent|maklerler)(?:$|[^\p{L}])/u.test(normalized)) {
+  if (/(?:^|[^\p{L}])(?:vasiteci|makler|rieltor|emlakci|agent|maklerler|realtor)(?:$|[^\p{L}])/u.test(normalized)) {
     return 'agent';
   }
-  if (/(?:^|[^\p{L}])(?:mulkiyyetci|sahibinden|sahibi|sexsi|ozum|ev sahibi)(?:$|[^\p{L}])/u.test(normalized)) {
+  if (/(?:^|[^\p{L}])(?:mulkiyyetci|sahibinden|sahibi|sexsi|ozum|ev sahibi|owner)(?:$|[^\p{L}])/u.test(normalized)) {
     return 'owner';
   }
   return 'unknown';
@@ -54,7 +58,7 @@ export function extractAzCity(text: string): string | undefined {
 
 const fingerprint = (...parts: string[]) => createHash('sha256').update(parts.join('\0')).digest('hex');
 
-export function discoverTapListingUrls(html: string, baseUrl = 'https://tap.az', cap = 50): string[] {
+export function discoverTapListingUrls(html: string, baseUrl = 'https://tap.az/elanlar/dasinmaz-emlak', cap = 50): string[] {
   const $ = load(html);
   const urls: string[] = [];
   const seen = new Set<string>();
@@ -82,8 +86,15 @@ export function discoverTapListingUrls(html: string, baseUrl = 'https://tap.az',
 
 export function parseTapListingPage(html: string, pageUrl: string): ConnectorEvidence | null {
   const $ = load(html);
-  const authorBlock = $('.author, .author-info, .shop-contact, .shop-info, .seller-info, .js-author-name, .lot-info').text() || $('body').text();
-  const sellerType = detectExplicitTapSellerType(authorBlock);
+  const authorBlock = $('.shop--title, .shop-info, .shop-contact, .seller-info, .js-author-name, .author, .author-info, [class*="shop"], [class*="author"]').text() || '';
+  const descBlock = $('.description, [class*="description"], p').text() || '';
+  const title = $('h1.title, h1, .lot-title').first().text().trim();
+  const contextText = `${authorBlock} ${title} ${descBlock}`;
+
+  let sellerType = detectExplicitTapSellerType(authorBlock);
+  if (sellerType === 'unknown') {
+    sellerType = detectExplicitTapSellerType(contextText);
+  }
 
   if (sellerType === 'owner') {
     return null; // Skip private owners
@@ -100,39 +111,38 @@ export function parseTapListingPage(html: string, pageUrl: string): ConnectorEvi
     const match = /wa\.me\/(\d{7,15})/.exec(href);
     if (match?.[1]) phones.push(match[1]);
   });
-  $('.phone-numbers, .show-phones, .phone').each((_i, el) => {
+  $('.phone-numbers, .show-phones, .phone, .phones').each((_i, el) => {
     const txt = $(el).text().trim();
     if (txt) phones.push(txt);
   });
 
-  // Extract from plain text if not found in links
-  if (phones.length === 0) {
-    const allText = $('body').text();
-    const phoneRegex = /(?:\+?994|0)?[\s-]*(?:50|51|55|70|77|99|12|10)[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}/g;
-    let match: RegExpExecArray | null;
-    while ((match = phoneRegex.exec(allText)) !== null) {
-      phones.push(match[0]);
-    }
+  // Extract from plain text (excluding footer support number)
+  const allText = $('body').find('*').not('footer, header, nav').text();
+  const phoneRegex = /(?:\+?994|0)?[\s-]*(?:50|51|55|70|77|99|12|10)[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}/g;
+  let match: RegExpExecArray | null;
+  while ((match = phoneRegex.exec(allText)) !== null) {
+    phones.push(match[0]);
   }
 
-  if (phones.length === 0) return null;
+  const validPhones = phones
+    .map(p => normalizePhone(p, 'AZ'))
+    .filter(p => p.isValid && p.normalized && !p.isForeign && !TAP_PLATFORM_HOTLINES.has(p.normalized));
 
-  const validPhone = phones.map(p => normalizePhone(p, 'AZ')).find(p => p.isValid && !p.isForeign);
-  if (!validPhone || !validPhone.normalized) return null;
+  if (validPhones.length === 0 || !validPhones[0]?.normalized) return null;
 
-  const title = $('h1.title, h1, .lot-title').first().text().trim();
-  const authorName = $('.author-name, .shop-title, .shop-info, .js-author-name').first().text().trim() || undefined;
+  const chosenPhone = validPhones[0].normalized;
+  const authorName = $('.author-name, .shop-title, .shop-info, .js-author-name, .author').first().text().trim() || undefined;
   const isAgency = sellerType === 'agency';
   const city = extractAzCity($('.location, .lot-info, .breadcrumbs').text() || $('body').text());
-  const excerpt = `${title} ${authorBlock}`.slice(0, 500).replace(/\s+/g, ' ').trim();
+  const excerpt = `${title} ${authorBlock} ${descBlock}`.slice(0, 500).replace(/\s+/g, ' ').trim();
 
   const evidence: ConnectorEvidence = {
     sourceUrl: pageUrl,
     locationType: 'listing',
     excerpt,
-    rawPhone: validPhone.normalized,
+    rawPhone: chosenPhone,
     platform: 'tap.az',
-    fingerprint: fingerprint(pageUrl, validPhone.normalized, excerpt),
+    fingerprint: fingerprint(pageUrl, chosenPhone, excerpt),
     explicitSellerType: sellerType,
   };
   if (city) evidence.city = city;
@@ -154,6 +164,8 @@ export async function crawlTapAz(options: CrawlOptions, deps: FetchDependencies 
   let pagesChecked = 1;
 
   for (const url of listingUrls) {
+    if (options.shouldStop && (await options.shouldStop())) break;
+    if (options.shouldProcessUrl && !(await options.shouldProcessUrl(url))) continue;
     if (options.delayMs > 0) await new Promise(r => setTimeout(r, options.delayMs));
     try {
       const page = await safeFetch(url, deps);

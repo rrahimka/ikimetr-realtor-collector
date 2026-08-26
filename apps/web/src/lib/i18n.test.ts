@@ -87,4 +87,22 @@ describe('i18n', () => {
       expect(t('az', key)).not.toBe(key);
     }
   });
+
+  it('localises new source types, operational statuses, and button states in both locales', () => {
+    expect(t('ru', 'sourceType.tapAz')).toBe('Tap.az — недвижимость');
+    expect(t('az', 'sourceType.tapAz')).toBe('Tap.az — daşınmaz əmlak');
+    expect(t('ru', 'sourceType.arendaAz')).toBe('Arenda.az — аренда и продажа');
+    expect(t('az', 'sourceType.arendaAz')).toBe('Arenda.az — kirayə və satış');
+    expect(t('ru', 'sourceType.stopAz')).toBe('Stop.az — недвижимость');
+    expect(t('az', 'sourceType.stopAz')).toBe('Stop.az — daşınmaz əmlak');
+
+    expect(t('ru', 'sourceStatus.working')).toBe('✓ Работает');
+    expect(t('az', 'sourceStatus.working')).toBe('✓ İşləyir');
+    expect(t('ru', 'button.running')).toBe('Запускается…');
+    expect(t('az', 'button.running')).toBe('İşə salınır…');
+    expect(t('ru', 'button.alreadyRunning')).toBe('Уже выполняется');
+    expect(t('az', 'button.alreadyRunning')).toBe('Artıq icra olunur');
+    expect(t('ru', 'toast.runCreated')).toBe('Запуск успешно создан');
+    expect(t('az', 'toast.runCreated')).toBe('İş uğurla yaradıldı');
+  });
 });

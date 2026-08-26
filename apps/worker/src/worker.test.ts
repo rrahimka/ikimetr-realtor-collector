@@ -33,11 +33,45 @@ describe('createConnectorRunner',()=>{
     expect(result).toMatchObject({stopReason:'permission_disabled',outcomes:{blocked:1}});
   });
 
-  it.each(['website','listing_page'] as const)('never dispatches the production generic %s connector',async(type)=>{
+  it.each(['website','listing_page'] as const)('never dispatches the production generic %s connector for unsupported domains',async(type)=>{
     db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Generic',type,locator:'https://bina.az/search',language:'AZ',maxPages:1,maxDepth:0,delayMs:0,enabled:true,killSwitch:false});
     const crawlWebsite=vi.fn();
     await expect(createConnectorRunner({}, {runBina:vi.fn(),crawlWebsite})(source)).rejects.toThrow('disabled in local-only mode');
     expect(crawlWebsite).not.toHaveBeenCalled();
+  });
+
+  it('dispatches tap_az source type to crawlTap connector', async () => {
+    db = createDatabase(':memory:');
+    const repos = createRepositories(db);
+    const source = repos.sources.create({ name: 'Tap', type: 'tap_az', locator: 'https://tap.az/elanlar/dasinmaz-emlak', language: 'AZ', maxPages: 10, maxDepth: 0, delayMs: 1000, enabled: true, killSwitch: false });
+    const crawlTap = vi.fn().mockResolvedValue({ items: [], pagesChecked: 1, estimatedItems: 0 });
+    const runner = createConnectorRunner({}, { runBina: vi.fn(), crawlTap });
+    await runner(source);
+    expect(crawlTap).toHaveBeenCalledWith(expect.objectContaining({ startUrl: 'https://tap.az/elanlar/dasinmaz-emlak', maxPages: 10, delayMs: 1000 }));
+  });
+
+  it('dispatches arenda_az source type to crawlArenda connector', async () => {
+    db = createDatabase(':memory:');
+    const repos = createRepositories(db);
+    const source = repos.sources.create({ name: 'Arenda', type: 'arenda_az', locator: 'https://arenda.az/kiraye-menziller', language: 'AZ', maxPages: 10, maxDepth: 0, delayMs: 1000, enabled: true, killSwitch: false });
+    const crawlArenda = vi.fn().mockResolvedValue({ items: [], pagesChecked: 1, estimatedItems: 0 });
+    const runner = createConnectorRunner({}, { runBina: vi.fn(), crawlArenda });
+    await runner(source);
+    expect(crawlArenda).toHaveBeenCalledWith(expect.objectContaining({ startUrl: 'https://arenda.az/kiraye-menziller', maxPages: 10, delayMs: 1000 }));
+  });
+
+  it('auto-routes legacy website source type with Tap/Arenda URLs to specialized connectors', async () => {
+    db = createDatabase(':memory:');
+    const repos = createRepositories(db);
+    const tapSource = repos.sources.create({ name: 'Tap Legacy', type: 'website', locator: 'https://tap.az/elanlar', language: 'AZ', maxPages: 10, maxDepth: 1, delayMs: 1000, enabled: true, killSwitch: false });
+    const arendaSource = repos.sources.create({ name: 'Arenda Legacy', type: 'website', locator: 'https://arenda.az/elanlar', language: 'AZ', maxPages: 10, maxDepth: 1, delayMs: 1000, enabled: true, killSwitch: false });
+    const crawlTap = vi.fn().mockResolvedValue({ items: [], pagesChecked: 1, estimatedItems: 0 });
+    const crawlArenda = vi.fn().mockResolvedValue({ items: [], pagesChecked: 1, estimatedItems: 0 });
+    const runner = createConnectorRunner({}, { runBina: vi.fn(), crawlTap, crawlArenda });
+    await runner(tapSource);
+    expect(crawlTap).toHaveBeenCalled();
+    await runner(arendaSource);
+    expect(crawlArenda).toHaveBeenCalled();
   });
 });
 

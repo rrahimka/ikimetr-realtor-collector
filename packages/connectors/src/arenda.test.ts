@@ -54,4 +54,34 @@ describe('Arenda.az connector', () => {
     expect(res.items[0]?.rawPhone).toBe('+994504443322');
     expect(res.items[0]?.explicitSellerType).toBe('agent');
   });
+
+  it('discovers modern Arenda slug-style listing URLs and ignores static pages', () => {
+    const html = `
+      <a href="/kiraye-ayliq-3-otaqli-yeni-tikili-nerimanov">Mənzil 1</a>
+      <a href="/alqi-satqi-2-otaqli-menzil-xetai">Mənzil 2</a>
+      <a href="/haqqimizda">About</a>
+      <a href="/elaqe">Contact</a>
+    `;
+    const urls = discoverArendaListingUrls(html, 'https://arenda.az');
+    expect(urls).toContain('https://arenda.az/kiraye-ayliq-3-otaqli-yeni-tikili-nerimanov');
+    expect(urls).toContain('https://arenda.az/alqi-satqi-2-otaqli-menzil-xetai');
+    expect(urls).not.toContain('https://arenda.az/haqqimizda');
+    expect(urls).not.toContain('https://arenda.az/elaqe');
+  });
+
+  it('excludes Arenda platform hotline from listing phones', () => {
+    const listingHtml = `
+      <div class="agent_info">Agentlik</div>
+      <a href="tel:+994705962424">Support</a>
+    `;
+    const parsed = parseArendaListingPage(listingHtml, 'https://arenda.az/kiraye-123');
+    expect(parsed).toBeNull();
+  });
+
+  it('stops crawling Arenda when shouldStop returns true', async () => {
+    const searchHtml = '<a href="/elan/1.html">1</a><a href="/elan/2.html">2</a>';
+    const fetcher = vi.fn(() => Promise.resolve(new Response(searchHtml, { headers: { 'content-type': 'text/html' } })));
+    const res = await crawlArendaAz({ startUrl: 'https://arenda.az/kiraye-menziller', maxPages: 5, maxDepth: 0, delayMs: 0, shouldStop: () => 'cancelled' }, { fetcher, resolver: publicResolver });
+    expect(res.pagesChecked).toBe(1);
+  });
 });

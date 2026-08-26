@@ -84,4 +84,20 @@ describe('Tap.az connector', () => {
     expect(res.items[0]?.rawPhone).toBe('+994553332211');
     expect(res.items[0]?.explicitSellerType).toBe('agency');
   });
+
+  it('excludes Tap platform hotline from listing phones', () => {
+    const listingHtml = `
+      <div class="shop-info">Mağaza</div>
+      <a href="tel:+994125261919">Support</a>
+    `;
+    const parsed = parseTapListingPage(listingHtml, 'https://tap.az/elanlar/1001');
+    expect(parsed).toBeNull();
+  });
+
+  it('stops crawling Tap when shouldStop returns true', async () => {
+    const searchHtml = '<a href="/elanlar/1001">1</a><a href="/elanlar/1002">2</a>';
+    const fetcher = vi.fn(() => Promise.resolve(new Response(searchHtml, { headers: { 'content-type': 'text/html' } })));
+    const res = await crawlTapAz({ startUrl: 'https://tap.az/elanlar/dasinmaz-emlak', maxPages: 5, maxDepth: 0, delayMs: 0, shouldStop: () => 'cancelled' }, { fetcher, resolver: publicResolver });
+    expect(res.pagesChecked).toBe(1);
+  });
 });

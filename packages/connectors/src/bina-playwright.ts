@@ -17,7 +17,7 @@ import {
   extractDeclaredBinaSitemapUrls,
   type BinaSitemapFetch,
 } from './bina-sitemap';
-import type { ConnectorEvidence, ConnectorResult } from './types';
+import type { BinaStopRequest, ConnectorEvidence, ConnectorResult } from './types';
 
 export type BinaStopReason =
   | 'http_403'
@@ -34,7 +34,6 @@ export type BinaStopReason =
   | 'technical_error_limit'
   | 'markup_changed';
 
-export type BinaStopRequest = false | 'cancelled' | 'kill_switch';
 export type BinaPagePhase = 'before_phone_reveal' | 'after_phone_reveal';
 
 export interface BinaConnectorResult extends ConnectorResult {

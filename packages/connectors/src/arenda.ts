@@ -1,44 +1,44 @@
 import { createHash } from 'node:crypto';
 import { load } from 'cheerio';
 import { normalizePhone } from '@ikimetr/core';
-import { safeFetch, type FetchDependencies } from './generic-website.js';
-import { normalizeBinaText } from './bina.js';
-import { extractAzCity } from './tap.js';
-import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types.js';
+import { safeFetch, type FetchDependencies } from './generic-website';
+import { normalizeBinaText } from './bina';
+import { extractAzCity } from './tap';
+import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types';
 
 const ARENDA_HOSTS = new Set(['arenda.az', 'www.arenda.az']);
-const LISTING_PATH = /^\/(?:elan\/|az\/elan\/|ru\/elan\/|menzil\/|kiraye\/)?(?:.*-)?(\d+)\.html?$/i;
+const ARENDA_PLATFORM_HOTLINES = new Set(['+994705962424']);
 
 export type ExplicitArendaSellerType = 'agency' | 'agent' | 'owner' | 'unknown';
 
 export function validateArendaUrl(input: string, kind: 'search' | 'listing' = 'search'): string {
   let url: URL;
   try {
-    url = new URL(input);
+    url = new URL(input.startsWith('http') ? input : `https://${input}`);
   } catch {
     throw new Error('Arenda.az URL is not valid');
   }
-  if (url.protocol !== 'https:' || !ARENDA_HOSTS.has(url.hostname)) {
+  if (url.protocol !== 'https:' || !ARENDA_HOSTS.has(url.hostname.toLowerCase())) {
     throw new Error('Arenda.az URL must use https://arenda.az or https://www.arenda.az');
   }
   if (kind === 'listing') {
-    const match = LISTING_PATH.exec(url.pathname);
-    if (!match && !/\/\d+\.html/.test(url.pathname)) {
-      return url.toString();
-    }
+    return url.toString().split('?')[0]!;
+  }
+  if (url.pathname === '' || url.pathname === '/') {
+    return 'https://arenda.az/kiraye-menziller';
   }
   return url.toString();
 }
 
 export function detectExplicitArendaSellerType(text: string): ExplicitArendaSellerType {
   const normalized = normalizeBinaText(text);
-  if (/(?:^|[^\p{L}])(?:agentlik|emlak agentliyi|agency|ofis)(?:$|[^\p{L}])/u.test(normalized)) {
+  if (/(?:^|[^\p{L}])(?:agentlik|emlak agentliyi|agency|ofis|mmc|group|dasinmaz emlak)(?:$|[^\p{L}])/u.test(normalized)) {
     return 'agency';
   }
   if (/(?:^|[^\p{L}])(?:vasiteci|makler|rieltor|emlakci|agent)(?:$|[^\p{L}])/u.test(normalized)) {
     return 'agent';
   }
-  if (/(?:^|[^\p{L}])(?:mulkiyyetci|sahibinden|sahibi|sexsi|ozum|ev sahibi)(?:$|[^\p{L}])/u.test(normalized)) {
+  if (/(?:^|[^\p{L}])(?:mulkiyyetci|sahibinden|emlak sahibi|sahibi|sexsi|ozum|ev sahibi|owner)(?:$|[^\p{L}])/u.test(normalized)) {
     return 'owner';
   }
   return 'unknown';
@@ -46,7 +46,31 @@ export function detectExplicitArendaSellerType(text: string): ExplicitArendaSell
 
 const fingerprint = (...parts: string[]) => createHash('sha256').update(parts.join('\0')).digest('hex');
 
-export function discoverArendaListingUrls(html: string, baseUrl = 'https://arenda.az', cap = 50): string[] {
+const NON_LISTING_PATHS = new Set([
+  '/',
+  '/xeberler',
+  '/haqqimizda',
+  '/elaqe',
+  '/faq',
+  '/xidmetler',
+  '/elan-yerlesdir',
+  '/secilmisler',
+  '/istifadeci-sertleri',
+  '/istifadecilerin-reytinqi',
+  '/yasayis-kompleksi',
+  '/dasinmaz-emlak-agentlikleri',
+]);
+
+export function isArendaListingPath(pathname: string): boolean {
+  const clean = pathname.split('?')[0]!.toLowerCase();
+  if (NON_LISTING_PATHS.has(clean)) return false;
+  if (clean.includes('/elan/') || /\/\d+\.html/.test(clean)) return true;
+  if (clean.startsWith('/kiraye-') || clean.startsWith('/alqi-satqi-') || clean.startsWith('/satiliq-')) return true;
+  if (clean.includes('-otaqli-') || clean.includes('-menzil-') || clean.includes('-torpaq-')) return true;
+  return false;
+}
+
+export function discoverArendaListingUrls(html: string, baseUrl = 'https://arenda.az/kiraye-menziller', cap = 50): string[] {
   const $ = load(html);
   const urls: string[] = [];
   const seen = new Set<string>();
@@ -58,7 +82,7 @@ export function discoverArendaListingUrls(html: string, baseUrl = 'https://arend
     try {
       const full = new URL(href, baseUrl).toString();
       const parsed = new URL(full);
-      if (ARENDA_HOSTS.has(parsed.hostname) && (parsed.pathname.includes('/elan/') || /\/\d+\.html/.test(parsed.pathname))) {
+      if (ARENDA_HOSTS.has(parsed.hostname.toLowerCase()) && isArendaListingPath(parsed.pathname)) {
         const canonical = full.split('?')[0]!;
         if (!seen.has(canonical)) {
           seen.add(canonical);
@@ -75,8 +99,15 @@ export function discoverArendaListingUrls(html: string, baseUrl = 'https://arend
 
 export function parseArendaListingPage(html: string, pageUrl: string): ConnectorEvidence | null {
   const $ = load(html);
-  const contactBlock = $('.seller_info, .agent_info, .contact_info, .user_name, .user-contacts').text() || $('body').text();
-  const sellerType = detectExplicitArendaSellerType(contactBlock);
+  const sellerCardText = $('div[class*="un-text-slate-700"], .seller_info, .agent_info, .user_name, .author, .contact_box, .user-contacts').text().trim();
+  const descText = $('.elan_description, .description, p').text().trim();
+  const title = $('h1').first().text().trim();
+  const fullContext = `${title} ${sellerCardText} ${descText}`;
+
+  let sellerType = detectExplicitArendaSellerType(sellerCardText);
+  if (sellerType === 'unknown') {
+    sellerType = detectExplicitArendaSellerType(fullContext);
+  }
 
   if (sellerType === 'owner') {
     return null; // Skip private owners
@@ -92,38 +123,38 @@ export function parseArendaListingPage(html: string, pageUrl: string): Connector
     const match = /wa\.me\/(\d{7,15})/.exec(href);
     if (match?.[1]) phones.push(match[1]);
   });
-  $('.phone, .phone_number, .phones').each((_i, el) => {
+  $('.phone, .phone_number, .phones, a[class*="un-font-semibold"]').each((_i, el) => {
     const txt = $(el).text().trim();
     if (txt) phones.push(txt);
   });
 
-  if (phones.length === 0) {
-    const allText = $('body').text();
-    const phoneRegex = /(?:\+?994|0)?[\s-]*(?:50|51|55|70|77|99|12|10)[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}/g;
-    let match: RegExpExecArray | null;
-    while ((match = phoneRegex.exec(allText)) !== null) {
-      phones.push(match[0]);
-    }
+  // Plain text numbers outside footer/header
+  const bodyText = $('body').find('*').not('footer, header, nav').text();
+  const phoneRegex = /(?:\+?994|0)?[\s-]*(?:50|51|55|70|77|99|12|10)[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}/g;
+  let match: RegExpExecArray | null;
+  while ((match = phoneRegex.exec(bodyText)) !== null) {
+    phones.push(match[0]);
   }
 
-  if (phones.length === 0) return null;
+  const validPhones = phones
+    .map(p => normalizePhone(p, 'AZ'))
+    .filter(p => p.isValid && p.normalized && !p.isForeign && !ARENDA_PLATFORM_HOTLINES.has(p.normalized));
 
-  const validPhone = phones.map(p => normalizePhone(p, 'AZ')).find(p => p.isValid && !p.isForeign);
-  if (!validPhone || !validPhone.normalized) return null;
+  if (validPhones.length === 0 || !validPhones[0]?.normalized) return null;
 
-  const title = $('h1').first().text().trim();
-  const authorName = $('.user_name, .agent_name, .seller_name').first().text().trim() || undefined;
+  const chosenPhone = validPhones[0].normalized;
+  const authorName = $('.user_name, .agent_name, .seller_name, div[class*="un-text-slate-700"]').first().text().trim() || undefined;
   const isAgency = sellerType === 'agency';
-  const city = extractAzCity($('.location, .address, .city').text() || $('body').text());
-  const excerpt = `${title} ${contactBlock}`.slice(0, 500).replace(/\s+/g, ' ').trim();
+  const city = extractAzCity($('.location, .address, .city, h1').text() || $('body').text());
+  const excerpt = `${title} ${sellerCardText} ${descText}`.slice(0, 500).replace(/\s+/g, ' ').trim();
 
   const evidence: ConnectorEvidence = {
     sourceUrl: pageUrl,
     locationType: 'listing',
     excerpt,
-    rawPhone: validPhone.normalized,
+    rawPhone: chosenPhone,
     platform: 'arenda.az',
-    fingerprint: fingerprint(pageUrl, validPhone.normalized, excerpt),
+    fingerprint: fingerprint(pageUrl, chosenPhone, excerpt),
     explicitSellerType: sellerType,
   };
   if (city) evidence.city = city;
@@ -145,6 +176,8 @@ export async function crawlArendaAz(options: CrawlOptions, deps: FetchDependenci
   let pagesChecked = 1;
 
   for (const url of listingUrls) {
+    if (options.shouldStop && (await options.shouldStop())) break;
+    if (options.shouldProcessUrl && !(await options.shouldProcessUrl(url))) continue;
     if (options.delayMs > 0) await new Promise(r => setTimeout(r, options.delayMs));
     try {
       const page = await safeFetch(url, deps);
