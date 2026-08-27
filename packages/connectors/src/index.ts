@@ -2,6 +2,7 @@ export * from './apify';
 export * from './arenda';
 export * from './bina';
 export * from './bina-playwright';
+export * from './bina-sitemap';
 export * from './city';
 export * from './emlakbazari';
 export * from './ev10';

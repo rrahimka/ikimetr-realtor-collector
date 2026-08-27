@@ -62,7 +62,7 @@ export interface BinaConnectorOptions {
   sitemapFetch?: BinaSitemapFetch;
 }
 
-const ALLOWED_RESOURCE_TYPES = new Set(['document', 'script', 'stylesheet']);
+const ALLOWED_RESOURCE_TYPES = new Set(['document', 'script', 'stylesheet', 'fetch', 'xhr']);
 const PHONE_BUTTON_NAME = 'Nömrəni göstər';
 const SELLER_CARD_SELECTOR = '[data-bina-seller-card], .product-owner, .product-owner__info';
 const ROBOTS_PRODUCT_TOKEN = 'ikimetr-realtor-collector';
@@ -78,6 +78,7 @@ export function isAllowedBinaRequest(input: string, resourceType: string): boole
   if (!ALLOWED_RESOURCE_TYPES.has(resourceType)) return false;
   if (resourceType === 'document') return true;
   if (/(?:^|[/_-])(?:api|graphql|track|tracker|tracking|analytics|advert|ads?)(?:[/_-]|\.|$)/iu.test(url.pathname)) return false;
+  if (resourceType === 'fetch' || resourceType === 'xhr') return true;
   return resourceType === 'script' ? /\.m?js$/iu.test(url.pathname) : /\.css$/iu.test(url.pathname);
 }
 
@@ -296,7 +297,7 @@ async function findSellerOnPage(page: Page): Promise<{ card: Locator; reveal?: L
 }
 
 
-async function readVisiblePhone(container: Locator): Promise<string | undefined> {
+async function readVisiblePhone(container: Locator, page?: Page): Promise<string | undefined> {
   const candidates = container.locator('[data-bina-phone], a[href^="tel:"]');
   const count = await candidates.count().catch(() => 0);
   for (let index = 0; index < count; index += 1) {
@@ -308,6 +309,21 @@ async function readVisiblePhone(container: Locator): Promise<string | undefined>
       if (href.startsWith('tel:')) return href.replace(/^tel:/u, '').trim();
     }
   }
+
+  if (page) {
+    const pageCandidates = page.locator('.product-phones a[href^="tel:"], .product-owner a[href^="tel:"], [data-stat="product-call-btn"] a[href^="tel:"], [data-ikimetr-card] a[href^="tel:"]');
+    const pCount = await pageCandidates.count().catch(() => 0);
+    for (let index = 0; index < pCount; index += 1) {
+      const candidate = pageCandidates.nth(index);
+      if (await candidate.isVisible().catch(() => false)) {
+        const text = (await candidate.innerText().catch(() => '')).trim();
+        if (text !== '') return text;
+        const href = (await candidate.getAttribute('href').catch(() => '')) ?? '';
+        if (href.startsWith('tel:')) return href.replace(/^tel:/u, '').trim();
+      }
+    }
+  }
+
   const lines = (await container.innerText().catch(() => '')).split(/\r?\n/u);
   for (const line of lines) {
     const candidate = normalizeVisibleBinaPhone(line.trim());
@@ -524,15 +540,15 @@ export async function runBinaAgencyConnector(options: BinaConnectorOptions): Pro
           await options.onListingChecked?.(listingUrl, { outcome: 'missing_phone', sellerType: seller.sellerType });
           continue;
         }
-        if (await readVisiblePhone(seller.card)) return resultWithStop(baseResult, 'markup_changed');
+        if (await readVisiblePhone(seller.card, page)) return resultWithStop(baseResult, 'markup_changed');
 
         await options.observePage?.(page, 'before_phone_reveal');
         await seller.reveal.click({ timeout: 5000 }).catch(() => {});
         await options.observePage?.(page, 'after_phone_reveal');
-        let visiblePhone = await readVisiblePhone(seller.card);
+        let visiblePhone = await readVisiblePhone(seller.card, page);
         for (let poll = 0; !visiblePhone && poll < 8; poll += 1) {
           await new Promise(resolve => setTimeout(resolve, 400));
-          visiblePhone = await readVisiblePhone(seller.card);
+          visiblePhone = await readVisiblePhone(seller.card, page);
         }
         if (!visiblePhone) {
           outcomes.missing_phone += 1;

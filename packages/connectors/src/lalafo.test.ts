@@ -95,6 +95,60 @@ describe('Lalafo Connector', () => {
     expect(parseLalafoAdData(unknownData, 'https://lalafo.az/baku/ads/unknown-id-112038593')).toBeNull();
   });
 
+  it('rejects professional seller ads outside real-estate category', () => {
+    // Pro seller selling a car
+    const carData = {
+      id: 8812345,
+      title: 'Mercedes-Benz E 220, 2.2 l, 2015 il',
+      mobile: '+994559998877',
+      category_id: 1042,
+      user: {
+        username: 'AutoSalon Baku',
+        pro: true,
+        business: { business: true, features: { company_name: 'AutoSalon Baku' } },
+      },
+      params: [
+        { name: 'Yürüş', value: '180 000 km' },
+        { name: 'Ban növü', value: 'Sedan' },
+        { name: 'Buraxılış ili', value: '2015' },
+      ],
+    };
+
+    expect(parseLalafoAdData(carData, 'https://lalafo.az/baku/avtomobiller/ads/mercedes-benz-id-8812345')).toBeNull();
+
+    // Pro seller selling electronics/phone
+    const phoneData = {
+      id: 9912345,
+      title: 'iPhone 15 Pro Max 256GB',
+      mobile: '+994501112233',
+      category_id: 8010,
+      user: {
+        username: 'iStore Pro',
+        pro: true,
+      },
+      params: [
+        { name: 'Yaddaş', value: '256 GB' },
+        { name: 'Ekran', value: '6.7' },
+      ],
+    };
+
+    expect(parseLalafoAdData(phoneData, 'https://lalafo.az/baku/elektronika/ads/iphone-15-id-9912345')).toBeNull();
+
+    // Services pro seller
+    const serviceData = {
+      id: 7712345,
+      title: 'Kombi təmiri ustası',
+      mobile: '+994702223344',
+      category_id: 5020,
+      user: {
+        username: 'Usta Rövşən',
+        pro: true,
+      },
+    };
+
+    expect(parseLalafoAdData(serviceData, 'https://lalafo.az/baku/xidmetler/ads/kombi-temiri-id-7712345')).toBeNull();
+  });
+
   it('extracts detail query data from HTML next data', () => {
     const nextData = {
       props: {

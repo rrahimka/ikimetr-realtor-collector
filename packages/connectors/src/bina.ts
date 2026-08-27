@@ -121,6 +121,8 @@ export function isExplicitOwnerMarker(text: string): boolean {
   return detectExplicitBinaSellerType(text) === 'owner';
 }
 
+export const BINA_PLATFORM_HOTLINES = new Set(['+994125269494']);
+
 export function normalizeVisibleBinaPhone(text: string): string | undefined {
   const trimmed = text.trim();
   if (trimmed === '' || /[*xX•…]/u.test(trimmed)) return undefined;
@@ -128,6 +130,7 @@ export function normalizeVisibleBinaPhone(text: string): string | undefined {
   if (digits.length < 9 || digits.length > 12) return undefined;
   const phone = normalizePhone(trimmed, 'AZ');
   if (!phone.isValid || phone.isForeign || !phone.normalized || !/^\+994\d{9}$/.test(phone.normalized)) return undefined;
+  if (BINA_PLATFORM_HOTLINES.has(phone.normalized)) return undefined;
   return phone.normalized;
 }
 

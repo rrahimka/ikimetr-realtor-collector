@@ -40,6 +40,7 @@ export function validateLalafoUrl(input: string, kind: 'search' | 'listing' = 's
 
 export interface LalafoAdData {
   id: number;
+  category_id?: number;
   title?: string;
   description?: string;
   city?: string;
@@ -59,6 +60,142 @@ export interface LalafoAdData {
     name?: string;
     value?: string;
   }>;
+}
+
+const RAW_REAL_ESTATE_PARAMS = [
+  'təklifin növü',
+  'tip predlojeniya',
+  'inzibati rayonlar',
+  'administrativnye rayony',
+  'sahə (m2)',
+  'sahə',
+  'ploshad (m2)',
+  'ploshad',
+  'torpaq sahəsi (sot)',
+  'ploshad uchastka (sot.)',
+  'otaq sayı',
+  'kolichestvo komnat',
+  'mərtəbə',
+  'etaj',
+  'mərtəbə sayı',
+  'etajnost',
+  'mənzilin növü',
+  'tip jilya',
+  'əmlakın növü',
+  'tip nedvijimosti',
+  'bina növü',
+  'tip zdaniya',
+  'sənədin növü',
+  'tip dokumenta',
+  'təmir',
+  'remont',
+  'parkinq',
+  'parking',
+  'kupça',
+  'kupchaya',
+];
+
+const RAW_NON_REAL_ESTATE_PARAMS = [
+  'yürüş',
+  'probeq',
+  'ban növü',
+  'tip kuzova',
+  'buraxılış ili',
+  'god vypuska',
+  'mühərrikin həcmi',
+  'obem dvigatelya',
+  'sürətlər qutusu',
+  'korobka peredach',
+  'yaddaş',
+  'pamyat',
+  'ekran',
+  'cins',
+  'pol',
+  'ölçü',
+  'razmer',
+];
+
+export const LALAFO_REAL_ESTATE_PARAMS = new Set(RAW_REAL_ESTATE_PARAMS.map(p => normalizeBinaText(p)));
+export const LALAFO_NON_REAL_ESTATE_PARAMS = new Set(RAW_NON_REAL_ESTATE_PARAMS.map(p => normalizeBinaText(p)));
+
+const NON_REAL_ESTATE_URL_PATHS = [
+  '/avtomobiller',
+  '/elektronika',
+  '/telefonlar',
+  '/xidmetler',
+  '/uslugi',
+  '/geyim',
+  '/odejda',
+  '/ehtiyyat-hisseleri',
+  '/zapchasti',
+  '/heyvanlar',
+  '/transport',
+];
+
+const REAL_ESTATE_URL_KEYWORDS = [
+  'nedvizhimost',
+  'dasinmaz-emlak',
+  'kommercheskaya-nedvizhimost',
+  'kvartiry',
+  'doma',
+  'zemelnye-uchastki',
+  'q-anbar',
+  'q-ofis',
+  'q-obyekt',
+];
+
+export function isLalafoRealEstateAd(data: LalafoAdData, pageUrl?: string): boolean {
+  if (pageUrl) {
+    const lowerUrl = pageUrl.toLowerCase();
+    for (const nonRe of NON_REAL_ESTATE_URL_PATHS) {
+      if (lowerUrl.includes(nonRe)) return false;
+    }
+  }
+
+  const paramNames = data.params?.map((p) => normalizeBinaText(p.name || '').trim()) || [];
+
+  // 1. Explicit non-real-estate parameters check
+  for (const name of paramNames) {
+    if (LALAFO_NON_REAL_ESTATE_PARAMS.has(name)) {
+      return false;
+    }
+  }
+
+  // 2. Real estate parameters check
+  for (const name of paramNames) {
+    if (LALAFO_REAL_ESTATE_PARAMS.has(name)) {
+      return true;
+    }
+  }
+
+  // 3. Category ID check (Lalafo real estate subtree: 2000-2999)
+  if (typeof data.category_id === 'number') {
+    if (data.category_id >= 2000 && data.category_id < 3000) {
+      return true;
+    }
+    // If category_id is outside 2000-2999 and no RE params exist, reject
+    if (data.category_id > 0) {
+      return false;
+    }
+  }
+
+  // 4. URL keyword check
+  if (pageUrl) {
+    const lowerUrl = pageUrl.toLowerCase();
+    for (const reKw of REAL_ESTATE_URL_KEYWORDS) {
+      if (lowerUrl.includes(reKw)) return true;
+    }
+  }
+
+  // 5. Title / description keywords check
+  const textNorm = normalizeBinaText(`${data.title || ''} ${data.description || ''}`);
+  if (
+    /(?:^|[^\p{L}])(?:menzil|menziller|bina evi|heyet evi|villa|bag evi|torpaq|obyekt|ofis|anbar|dasinmaz emlak|novostroyka|kupcali|ipoteka)(?:$|[^\p{L}])/u.test(textNorm)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export function detectExplicitLalafoSellerType(data: LalafoAdData): ExplicitLalafoSellerType {
@@ -117,6 +254,11 @@ function fingerprint(...parts: string[]): string {
 }
 
 export function parseLalafoAdData(data: LalafoAdData, pageUrl: string): ConnectorEvidence | null {
+  // Category safety guard: ONLY process ads verified as real-estate
+  if (!isLalafoRealEstateAd(data, pageUrl)) {
+    return null;
+  }
+
   const sellerType = detectExplicitLalafoSellerType(data);
   // Conservative classification: ONLY accept verified agent or agency, reject owners and unclassified private users
   if (sellerType !== 'agent' && sellerType !== 'agency') {

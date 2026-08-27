@@ -7,7 +7,7 @@ import { extractAzCity } from './tap';
 import type { ConnectorEvidence, ConnectorResult, CrawlOptions } from './types';
 
 const IPOTEKA_HOSTS = new Set(['ipoteka.az', 'www.ipoteka.az']);
-const LISTING_PATH = /^\/elan\/(\d+)(?:-[a-z0-9-]+)?$/i;
+const LISTING_PATH = /^\/elan\/(\d+)(?:-[^/?#]+)?$/iu;
 const IPOTEKA_PLATFORM_HOTLINES = new Set<string>();
 
 export type ExplicitIpotekaSellerType = 'agency' | 'agent' | 'owner' | 'unknown';
