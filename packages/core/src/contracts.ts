@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_MAX_ITEMS_PER_RUN, deriveSourceDisplayName } from './source-registry';
 
 export const SOURCE_TYPES = [
   'website',
@@ -69,18 +70,25 @@ export function detectSourceTypeFromUrl(input: string): SourceType {
   return 'website';
 }
 
-export const sourceSchema = z.object({
+export const baseSourceSchema = z.object({
   id: z.number().int().positive().optional(),
-  name: z.string().trim().min(1).max(200),
+  name: z.string().trim().max(200).optional(),
   type: z.enum(SOURCE_TYPES),
   locator: z.string().trim().min(1).max(2_000),
   language: z.enum(['AZ', 'RU', 'EN', 'mixed']).default('mixed'),
-  maxPages: z.coerce.number().int().min(0).max(500).default(10),
+  maxPages: z.coerce.number().int().min(0).max(500).default(DEFAULT_MAX_ITEMS_PER_RUN),
   maxDepth: z.coerce.number().int().min(0).max(10).default(1),
   delayMs: z.coerce.number().int().min(0).max(60_000).default(1_000),
   enabled: z.coerce.boolean().default(true),
   killSwitch: z.coerce.boolean().default(false),
-}).superRefine((source, context) => {
+});
+
+export const updateSourceSchema = baseSourceSchema.partial();
+
+export const sourceSchema = baseSourceSchema.superRefine((source, context) => {
+  if (!source.name || !source.name.trim()) {
+    source.name = deriveSourceDisplayName({ type: source.type, locator: source.locator });
+  }
   let parsedLocator: URL | undefined;
   try {
     parsedLocator = new URL(source.locator.startsWith('http') ? source.locator : `https://${source.locator}`);

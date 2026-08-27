@@ -1,21 +1,28 @@
-# Handoff — Final Product Completion & Live Production Acceptance
+# Handoff — Sources Page UX Simplification & Sticky Navigation Complete
 
 ## Repository state
 
 - Branch: `feature/bina-agency-pilot`
 - Verification suite (all exit 0):
-  - `pnpm test` — **415/415 tests pass across 44 test suites**
+  - `pnpm test` — **457/457 tests pass across 48 test suites**
   - `pnpm typecheck` — clean (5 of 5 workspace packages)
   - `pnpm lint` — clean (0 errors, 0 warnings)
   - `pnpm build` — clean Next.js 16.3 app + worker builds (including `/contacts`, `/leads`, `/leads/[id]`, `/runs`, `/review`, `/sources`, `/api/contacts/export`, `/api/leads/export`)
   - `pnpm test:smoke` — 2/2 end-to-end scenarios pass (`collector pipeline: login → fixture source → run → worker → contact → CSV` and `language toggle and CSV import report`)
   - `git diff --check` — clean (no trailing whitespace or conflict markers)
 - Verified Databases:
-  - Realtor Intelligence Pipeline: 739 canonical realtors intact in database with 914 evidence records.
-  - Client Lead Intelligence Pipeline: Dual intent classifier (Buyer, Seller, Renter, Landlord, Investor, Realtor Request), dedicated `leads` SQLite table (migration 0007), Lead Inbox UI (`/leads`), Lead Detail view (`/leads/[id]`), and isolated Lead Export (`/api/leads/export?format=xlsx` & `csv`).
-  - Automated Backup & Disaster Recovery: `packages/database/src/backup.ts` with online SQLite backup, 14-copy retention policy, and 100% verified restore test.
-  - Single-Command Operations: `pnpm start:production` (starts web & worker), `pnpm status` (shows live DB & service stats), `pnpm backup` (creates instant timestamped backup).
-  - User Documentation: Complete non-developer operational manual in Russian in `README.md`.
+  - Realtor Intelligence Pipeline: 779 canonical realtors intact in database with all evidence records.
+  - Client Lead Intelligence Pipeline: 15 verified lead records intact in database.
+  - Sources Pipeline: 18 active/configured sources.
+  - Runs Pipeline: 163 completed/audited run records.
+  - UI Enhancements:
+    - Global Sticky Sidebar on desktop (`position: sticky; top: 0; height: 100vh`) with independent content scroll and clickable `IKIMETR COLLECTOR` logo link to `/`.
+    - Simplified Add Source Form: 5 non-technical fields (Category: Веб-сайт / Социальная сеть, Platform, URL / Locator, Language, Delay in seconds).
+    - Auto-Derived Display Names: `Bina.az`, `Telegram — @handle`, `Instagram — @user`, `TikTok — @user`, `Facebook — page`.
+    - Category Filter Tabs on Sources Page: `Все`, `Веб-сайты`, `Социальные сети` with live item counts.
+    - Clickable Source URLs: External link icon `↗` opening original source safely in new tab (`target="_blank" rel="noopener noreferrer"`). Plain queries remain plain text.
+    - Safe Start/Stop Controls: Operational `[ Запустить ]` and `[ Остановить ]` buttons with pending states. Ordinary table rows no longer show red emergency kill buttons.
+    - Centralized Limit Cap: `DEFAULT_MAX_ITEMS_PER_RUN = 50`.
 
 ---
 

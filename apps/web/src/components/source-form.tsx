@@ -1,111 +1,66 @@
 'use client';
 
 import { useState } from 'react';
+import {
+  DEFAULT_MAX_ITEMS_PER_RUN,
+  deriveSourceDisplayName,
+  detectClientSourceType,
+  getSourceCategory,
+  getSourceFormDefaults,
+  SOCIAL_SOURCE_OPTIONS,
+  type SourceCategory,
+  type SourceType,
+  WEBSITE_SOURCE_OPTIONS,
+} from '../lib/source-options';
 import { t, type Lang } from '../lib/i18n';
 import { apiMutation } from './api-button';
 import { showToast } from './toast';
 
-export const SOURCE_TYPE_OPTIONS = [
-  { value: 'bina_agency', labelKey: 'sourceType.binaAgency' },
-  { value: 'tap_az', labelKey: 'sourceType.tapAz' },
-  { value: 'arenda_az', labelKey: 'sourceType.arendaAz' },
-  { value: 'yeniemlak_az', labelKey: 'sourceType.yeniemlakAz' },
-  { value: 'emlakbazari_az', labelKey: 'sourceType.emlakbazariAz' },
-  { value: 'ipoteka_az', labelKey: 'sourceType.ipotekaAz' },
-  { value: 'city_az', labelKey: 'sourceType.cityAz' },
-  { value: 'vipemlak_az', labelKey: 'sourceType.vipemlakAz' },
-  { value: 'ev10_az', labelKey: 'sourceType.ev10Az' },
-  { value: 'lalafo_az', labelKey: 'sourceType.lalafoAz' },
-  { value: 'unvan_az', labelKey: 'sourceType.unvanAz' },
-  { value: 'google_maps_query', labelKey: 'sourceType.googleMaps' },
-  { value: 'instagram_profile', labelKey: 'sourceType.instagramProfile' },
-  { value: 'tiktok_profile', labelKey: 'sourceType.tiktokProfile' },
-  { value: 'telegram_channel', labelKey: 'sourceType.telegramChannel' },
-  { value: 'telegram_group', labelKey: 'sourceType.telegramGroup' },
-  { value: 'facebook_page', labelKey: 'sourceType.facebookPage' },
-  { value: 'website', labelKey: 'sourceType.website' },
-  { value: 'listing_page', labelKey: 'sourceType.listingPage' },
-] as const;
-
-type SourceType = (typeof SOURCE_TYPE_OPTIONS)[number]['value'];
-type FormDefaults = { maxPages: number; maxDepth: number; delayMs: number; language: string };
-
-function detectClientSourceType(input: string): SourceType | undefined {
-  const trimmed = input.trim();
-  if (trimmed.startsWith('@') || trimmed.includes('t.me/') || trimmed.includes('telegram.me/')) {
-    return 'telegram_channel';
-  }
-  try {
-    const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
-    const host = url.hostname.toLowerCase().replace(/^www\./, '');
-    if (host === 'bina.az') return 'bina_agency';
-    if (host === 'tap.az') return 'tap_az';
-    if (host === 'arenda.az') return 'arenda_az';
-    if (host === 'yeniemlak.az') return 'yeniemlak_az';
-    if (host === 'emlakbazari.az') return 'emlakbazari_az';
-    if (host === 'ipoteka.az') return 'ipoteka_az';
-    if (host === 'city.az') return 'city_az';
-    if (host === 'vipemlak.az') return 'vipemlak_az';
-    if (host === 'ev10.az') return 'ev10_az';
-    if (host === 'lalafo.az') return 'lalafo_az';
-    if (host === 'unvan.az') return 'unvan_az';
-    if (host.includes('instagram.com')) return 'instagram_profile';
-    if (host.includes('tiktok.com')) return 'tiktok_profile';
-    if (host.includes('t.me') || host.includes('telegram.me')) return 'telegram_channel';
-    if (host.includes('facebook.com') || host.includes('fb.com') || host.includes('fb.me')) return 'facebook_page';
-  } catch {
-    // ignore
-  }
-  return undefined;
-}
-
-export function getSourceFormDefaults(type: string): FormDefaults {
-  if (type === 'bina_agency') {
-    return { maxPages: 10, maxDepth: 0, delayMs: 10_000, language: 'AZ' };
-  }
-  if (
-    type === 'tap_az' ||
-    type === 'arenda_az' ||
-    type === 'yeniemlak_az' ||
-    type === 'emlakbazari_az' ||
-    type === 'ipoteka_az' ||
-    type === 'city_az' ||
-    type === 'vipemlak_az' ||
-    type === 'ev10_az' ||
-    type === 'lalafo_az' ||
-    type === 'unvan_az' ||
-    type === 'stop_az'
-  ) {
-    return { maxPages: 20, maxDepth: 0, delayMs: 1_000, language: 'AZ' };
-  }
-  if (
-    type === 'instagram_profile' ||
-    type === 'tiktok_profile' ||
-    type === 'telegram_channel' ||
-    type === 'telegram_group' ||
-    type === 'facebook_page'
-  ) {
-    return { maxPages: 10, maxDepth: 0, delayMs: 2_000, language: 'mixed' };
-  }
-  return { maxPages: 10, maxDepth: 1, delayMs: 1_000, language: 'AZ' };
-}
-
 export function SourceForm({ lang }: { lang: Lang }) {
   const [busy, setBusy] = useState(false);
+  const [category, setCategory] = useState<SourceCategory>('website');
   const [sourceType, setSourceType] = useState<SourceType>('bina_agency');
-  const [defaults, setDefaults] = useState<FormDefaults>(getSourceFormDefaults('bina_agency'));
   const [locatorValue, setLocatorValue] = useState('');
+  const [delaySeconds, setDelaySeconds] = useState<number>(10);
+  const [language, setLanguage] = useState<string>('AZ');
+
+  const currentOptions = category === 'social' ? SOCIAL_SOURCE_OPTIONS : WEBSITE_SOURCE_OPTIONS;
+
+  const handleCategoryChange = (nextCat: SourceCategory) => {
+    setCategory(nextCat);
+    const firstOption = nextCat === 'social' ? SOCIAL_SOURCE_OPTIONS[0] : WEBSITE_SOURCE_OPTIONS[0];
+    setSourceType(firstOption.value);
+    setDelaySeconds(firstOption.defaultDelaySeconds);
+    setLanguage(firstOption.defaultLang);
+  };
+
+  const handleTypeChange = (nextType: SourceType) => {
+    setSourceType(nextType);
+    const defaults = getSourceFormDefaults(nextType);
+    setDelaySeconds(defaults.delaySeconds);
+    setLanguage(defaults.language);
+  };
 
   const handleLocatorChange = (val: string) => {
     setLocatorValue(val);
     const detected = detectClientSourceType(val);
     if (detected) {
+      const detectedCategory = getSourceCategory(detected);
+      if (detectedCategory !== category) {
+        setCategory(detectedCategory);
+      }
       if (detected !== sourceType) {
         setSourceType(detected);
-        setDefaults(getSourceFormDefaults(detected));
+        const defaults = getSourceFormDefaults(detected);
+        setDelaySeconds(defaults.delaySeconds);
+        setLanguage(defaults.language);
       }
     }
   };
+
+  const activeOption = currentOptions.find((o) => o.value === sourceType);
+  const dynamicPlaceholder =
+    activeOption?.placeholder || (category === 'social' ? 'https://t.me/... / @username / поисковая фраза' : 'https://...');
 
   return (
     <form
@@ -113,16 +68,25 @@ export function SourceForm({ lang }: { lang: Lang }) {
       onSubmit={async (event) => {
         event.preventDefault();
         setBusy(true);
-        const form = new FormData(event.currentTarget);
+
+        const safeDelaySeconds = Number.isFinite(Number(delaySeconds)) && Number(delaySeconds) >= 0 ? Number(delaySeconds) : 1;
+        let delayMs = Math.round(safeDelaySeconds * 1000);
+        if (sourceType === 'bina_agency') {
+          delayMs = Math.max(10_000, delayMs);
+        }
+
+        const maxDepth = sourceType === 'bina_agency' || sourceType === 'tap_az' || sourceType === 'arenda_az' ? 0 : (sourceType === 'website' ? 1 : 0);
+        const derivedName = deriveSourceDisplayName({ type: sourceType, locator: locatorValue });
+
         try {
           const response = await apiMutation('/api/sources', 'POST', {
-            name: form.get('name'),
-            type: form.get('type'),
-            locator: form.get('locator'),
-            language: form.get('language'),
-            maxPages: Number(form.get('maxPages')),
-            maxDepth: Number(form.get('maxDepth')),
-            delayMs: Number(form.get('delayMs')),
+            name: derivedName,
+            type: sourceType,
+            locator: locatorValue,
+            language,
+            maxPages: DEFAULT_MAX_ITEMS_PER_RUN,
+            maxDepth,
+            delayMs,
             enabled: true,
             killSwitch: false,
           });
@@ -143,29 +107,39 @@ export function SourceForm({ lang }: { lang: Lang }) {
       }}
     >
       <h2>{t(lang, 'sourceForm.title')}</h2>
+
+      {/* Field 1: Category */}
       <label>
-        {t(lang, 'sourceForm.name')}
-        <input required name="name" disabled={busy} placeholder="Bina.az / Tap.az / Arenda.az" />
+        {t(lang, 'sourceForm.category')}
+        <select
+          name="category"
+          value={category}
+          disabled={busy}
+          onChange={(e) => handleCategoryChange(e.target.value as SourceCategory)}
+        >
+          <option value="website">{t(lang, 'sources.categoryWebsite')}</option>
+          <option value="social">{t(lang, 'sources.categorySocial')}</option>
+        </select>
       </label>
+
+      {/* Field 2: Specific Source / Platform */}
       <label>
         {t(lang, 'sourceForm.type')}
         <select
           name="type"
           value={sourceType}
           disabled={busy}
-          onChange={(event) => {
-            const nextType = event.target.value as SourceType;
-            setSourceType(nextType);
-            setDefaults(getSourceFormDefaults(nextType));
-          }}
+          onChange={(event) => handleTypeChange(event.target.value as SourceType)}
         >
-          {SOURCE_TYPE_OPTIONS.map((option) => (
+          {currentOptions.map((option) => (
             <option key={option.value} value={option.value}>
               {t(lang, option.labelKey)}
             </option>
           ))}
         </select>
       </label>
+
+      {/* Field 3: Locator (URL or query) */}
       <label>
         {t(lang, 'sourceForm.locator')}
         <input
@@ -174,59 +148,45 @@ export function SourceForm({ lang }: { lang: Lang }) {
           disabled={busy}
           value={locatorValue}
           onChange={(e) => handleLocatorChange(e.target.value)}
-          placeholder="https://..."
+          placeholder={dynamicPlaceholder}
         />
       </label>
+
+      {/* Field 4: Language */}
       <label>
         {t(lang, 'sourceForm.language')}
         <select
           name="language"
-          value={defaults.language}
+          value={language}
           disabled={busy}
-          onChange={(event) => setDefaults({ ...defaults, language: event.target.value })}
+          onChange={(event) => setLanguage(event.target.value)}
         >
-          <option>AZ</option>
-          <option>RU</option>
-          <option>EN</option>
-          <option>mixed</option>
+          <option value="AZ">AZ</option>
+          <option value="RU">RU</option>
+          <option value="EN">EN</option>
+          <option value="mixed">mixed</option>
         </select>
       </label>
-      <label>
-        {t(lang, 'sourceForm.pages')}
-        <input
-          name="maxPages"
-          type="number"
-          min="1"
-          max={sourceType === 'bina_agency' ? 100 : 500}
-          value={defaults.maxPages}
-          disabled={busy}
-          onChange={(event) => setDefaults({ ...defaults, maxPages: Number(event.target.value) })}
-        />
-      </label>
-      <label>
-        {t(lang, 'sourceForm.depth')}
-        <input
-          name="maxDepth"
-          type="number"
-          min="0"
-          max={sourceType === 'bina_agency' || sourceType === 'tap_az' || sourceType === 'arenda_az' ? 0 : 10}
-          value={defaults.maxDepth}
-          disabled={busy}
-          onChange={(event) => setDefaults({ ...defaults, maxDepth: Number(event.target.value) })}
-        />
-      </label>
+
+      {/* Field 5: Delay in seconds */}
       <label>
         {t(lang, 'sourceForm.delay')}
         <input
-          name="delayMs"
+          name="delaySeconds"
           type="number"
-          min={sourceType === 'bina_agency' ? 10_000 : 0}
-          value={defaults.delayMs}
+          step="0.5"
+          min={sourceType === 'bina_agency' ? '10' : '0'}
+          value={delaySeconds}
           disabled={busy}
-          onChange={(event) => setDefaults({ ...defaults, delayMs: Number(event.target.value) })}
+          onChange={(event) => setDelaySeconds(Number(event.target.value))}
         />
+        <span className="muted" style={{ fontSize: '11px', marginTop: '2px', display: 'block' }}>
+          {t(lang, 'sourceForm.delayHelp')}
+        </span>
       </label>
-      <button type="submit" disabled={busy}>
+
+      {/* Submit button */}
+      <button type="submit" disabled={busy} style={{ alignSelf: 'flex-end' }}>
         {busy ? t(lang, 'sourceForm.saving') : t(lang, 'sourceForm.add')}
       </button>
     </form>

@@ -28,9 +28,11 @@ export default async function Layout({ children }: { children: React.ReactNode }
       <body>
         <div className="shell">
           <aside className="sidebar">
-            <div className="brand">
-              IKIMETR <span>COLLECTOR</span>
-            </div>
+            <Link href="/" className="brand-link" title={t(lang, 'nav.dashboard')}>
+              <div className="brand">
+                IKIMETR <span>COLLECTOR</span>
+              </div>
+            </Link>
             <nav>
               {nav.map(([href, key]) => (
                 <Link key={href} href={href}>

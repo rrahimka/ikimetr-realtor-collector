@@ -71,4 +71,46 @@ describe('Source Registry', () => {
     expect(getSourceDefinition('ipoteka_az')?.domain).toBe('ipoteka.az');
     expect(getSourceDefinition('city_az')?.domain).toBe('city.az');
   });
+
+  it('categorizes sources as website or social correctly', async () => {
+    const { getSourceCategory, DEFAULT_MAX_ITEMS_PER_RUN } = await import('./source-registry.js');
+    expect(DEFAULT_MAX_ITEMS_PER_RUN).toBe(50);
+    expect(getSourceCategory('bina_agency')).toBe('website');
+    expect(getSourceCategory('tap_az')).toBe('website');
+    expect(getSourceCategory('arenda_az')).toBe('website');
+    expect(getSourceCategory('website')).toBe('website');
+    expect(getSourceCategory('https://yeniemlak.az/elan/123')).toBe('website');
+
+    expect(getSourceCategory('telegram_channel')).toBe('social');
+    expect(getSourceCategory('telegram_group')).toBe('social');
+    expect(getSourceCategory('instagram_profile')).toBe('social');
+    expect(getSourceCategory('tiktok_profile')).toBe('social');
+    expect(getSourceCategory('facebook_page')).toBe('social');
+    expect(getSourceCategory('https://t.me/baku_emlak')).toBe('social');
+    expect(getSourceCategory('https://instagram.com/baku_realtor')).toBe('social');
+    expect(getSourceCategory('@baku_channel')).toBe('social');
+  });
+
+  it('derives human-friendly display names automatically without manual input', async () => {
+    const { deriveSourceDisplayName } = await import('./source-registry.js');
+    expect(deriveSourceDisplayName({ type: 'bina_agency', locator: 'https://bina.az/baki' })).toBe('Bina.az');
+    expect(deriveSourceDisplayName({ type: 'tap_az', locator: 'https://tap.az/elanlar' })).toBe('Tap.az');
+    expect(deriveSourceDisplayName({ type: 'arenda_az', locator: 'https://arenda.az' })).toBe('Arenda.az');
+    expect(deriveSourceDisplayName({ type: 'yeniemlak_az', locator: 'https://yeniemlak.az' })).toBe('YeniEmlak.az');
+    expect(deriveSourceDisplayName({ type: 'emlakbazari_az', locator: 'https://emlakbazari.az' })).toBe('EmlakBazari.az');
+    expect(deriveSourceDisplayName({ type: 'ipoteka_az', locator: 'https://ipoteka.az' })).toBe('Ipoteka.az');
+    expect(deriveSourceDisplayName({ type: 'city_az', locator: 'https://city.az' })).toBe('City.az');
+    expect(deriveSourceDisplayName({ type: 'vipemlak_az', locator: 'https://vipemlak.az' })).toBe('VIPemlak.az');
+    expect(deriveSourceDisplayName({ type: 'ev10_az', locator: 'https://ev10.az' })).toBe('Ev10.az');
+    expect(deriveSourceDisplayName({ type: 'lalafo_az', locator: 'https://lalafo.az' })).toBe('Lalafo.az');
+    expect(deriveSourceDisplayName({ type: 'unvan_az', locator: 'https://unvan.az' })).toBe('Unvan.az');
+    expect(deriveSourceDisplayName({ type: 'stop_az', locator: 'https://stop.az' })).toBe('Stop.az');
+
+    expect(deriveSourceDisplayName({ type: 'telegram_channel', locator: 'https://t.me/baku_emlak' })).toBe('Telegram — @baku_emlak');
+    expect(deriveSourceDisplayName({ type: 'telegram_channel', locator: '@baku_emlak' })).toBe('Telegram — @baku_emlak');
+    expect(deriveSourceDisplayName({ type: 'instagram_profile', locator: 'https://instagram.com/quliyev_estates' })).toBe('Instagram — @quliyev_estates');
+    expect(deriveSourceDisplayName({ type: 'tiktok_profile', locator: 'https://tiktok.com/@baku_realtor' })).toBe('TikTok — @baku_realtor');
+    expect(deriveSourceDisplayName({ type: 'facebook_page', locator: 'https://facebook.com/bakuemlak' })).toBe('Facebook — bakuemlak');
+    expect(deriveSourceDisplayName({ type: 'google_maps_query', locator: 'baku real estate' })).toBe('Google Maps — baku real estate');
+  });
 });
