@@ -43,6 +43,8 @@ function detectClientSourceType(input: string): SourceType | undefined {
     if (host === 'ev10.az') return 'ev10_az';
     if (host === 'lalafo.az') return 'lalafo_az';
     if (host === 'unvan.az') return 'unvan_az';
+    if (host.includes('instagram.com')) return 'instagram_profile';
+    if (host.includes('tiktok.com')) return 'tiktok_profile';
   } catch {
     // ignore
   }
@@ -67,6 +69,9 @@ export function getSourceFormDefaults(type: string): FormDefaults {
     type === 'stop_az'
   ) {
     return { maxPages: 20, maxDepth: 0, delayMs: 1_000, language: 'AZ' };
+  }
+  if (type === 'instagram_profile' || type === 'tiktok_profile') {
+    return { maxPages: 10, maxDepth: 0, delayMs: 2_000, language: 'mixed' };
   }
   return { maxPages: 10, maxDepth: 1, delayMs: 1_000, language: 'AZ' };
 }

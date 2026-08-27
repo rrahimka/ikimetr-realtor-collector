@@ -16,6 +16,6 @@ export default async function ContactDetail({params}:{params:Promise<{id:string}
   </section>
   <h2>{t(lang,'detail.evidence')}</h2>
   {evidence.length===0?<p className="muted">{t(lang,'detail.evidenceEmpty')}</p>:
-  <div className="table-wrap"><table><thead><tr><th>{t(lang,'detail.colSource')}</th><th>{t(lang,'detail.colType')}</th><th>{t(lang,'detail.colText')}</th><th>{t(lang,'detail.colPlatform')}</th><th>{t(lang,'detail.colDate')}</th></tr></thead><tbody>{evidence.map(e=><tr key={e.id}><td>{e.source_url}</td><td>{e.location_type}</td><td>{e.excerpt}</td><td>{e.platform}</td><td>{formatDateTime(lang,e.discovered_at)}</td></tr>)}</tbody></table></div>}
+  <div className="table-wrap"><table><thead><tr><th>{t(lang,'detail.colSource')}</th><th>{t(lang,'detail.colType')}</th><th>{t(lang,'detail.colText')}</th><th>{t(lang,'detail.colPlatform')}</th><th>{t(lang,'detail.colDate')}</th></tr></thead><tbody>{evidence.map(e=><tr key={e.id}><td>{e.source_url.startsWith('http')?<a href={e.source_url} target="_blank" rel="noreferrer">{e.source_url}</a>:e.source_url}</td><td>{e.location_type}</td><td>{e.excerpt}</td><td>{e.platform}</td><td>{formatDateTime(lang,e.discovered_at)}</td></tr>)}</tbody></table></div>}
   <p><a href="/contacts">{t(lang,'common.back')}</a></p></>;
 }

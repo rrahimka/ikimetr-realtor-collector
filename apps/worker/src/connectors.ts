@@ -4,10 +4,12 @@ import {
   crawlCityAz,
   crawlEmlakBazariAz,
   crawlEv10Az,
+  crawlInstagram,
   crawlIpotekaAz,
   crawlLalafoAz,
   crawlStopAz,
   crawlTapAz,
+  crawlTikTok,
   crawlUnvanAz,
   crawlVipEmlakAz,
   crawlWebsite,
@@ -47,6 +49,8 @@ export interface ConnectorDependencies {
   crawlEv10?: typeof crawlEv10Az;
   crawlLalafo?: typeof crawlLalafoAz;
   crawlUnvan?: typeof crawlUnvanAz;
+  crawlInstagram?: typeof crawlInstagram;
+  crawlTikTok?: typeof crawlTikTok;
 }
 
 function permissionDisabledResult(): BinaConnectorResult {
@@ -250,6 +254,32 @@ export function createConnectorRunner(
       });
     }
 
+    if (source.type === 'instagram_profile' || source.type === 'instagram_post' || source.type === 'instagram_hashtag') {
+      const crawlInsta = dependencies.crawlInstagram ?? crawlInstagram;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlInsta({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 10,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
+    if (source.type === 'tiktok_profile' || source.type === 'tiktok_video' || source.type === 'tiktok_hashtag' || source.type === 'tiktok_keyword') {
+      const crawlTk = dependencies.crawlTikTok ?? crawlTikTok;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlTk({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 10,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
     if (source.type === 'stop_az') {
       const crawlStop = dependencies.crawlStop ?? crawlStopAz;
       const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
@@ -398,11 +428,33 @@ export function createConnectorRunner(
           ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
         });
       }
+      if (detected === 'instagram_profile' || detected === 'instagram_post' || detected === 'instagram_hashtag') {
+        const crawlInsta = dependencies.crawlInstagram ?? crawlInstagram;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlInsta({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 10,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'tiktok_profile' || detected === 'tiktok_video' || detected === 'tiktok_hashtag' || detected === 'tiktok_keyword') {
+        const crawlTk = dependencies.crawlTikTok ?? crawlTikTok;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlTk({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 10,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
       throw new Error(`Generic web connector is disabled in local-only mode: ${source.locator} is not a supported specialized source`);
     }
 
-    if (source.type.startsWith('instagram') && !env.APIFY_TOKEN) throw new Error('Instagram: Не настроено (APIFY_TOKEN)');
-    if (source.type.startsWith('tiktok') && !env.APIFY_TOKEN) throw new Error('TikTok: Не настроено (APIFY_TOKEN)');
     if (source.type === 'google_maps_query' && !env.APIFY_TOKEN) throw new Error('Google Maps Apify: Не настроено (APIFY_TOKEN)');
     throw new Error(`Connector configuration unavailable for ${source.type}`);
   };
