@@ -90,6 +90,8 @@ const dict: Record<string, Entry> = {
   'sourceType.googleMaps': { ru: 'Google Maps (Apify)', az: 'Google Maps (Apify)' },
   'sourceType.instagramProfile': { ru: 'Instagram профиль', az: 'Instagram profil' },
   'sourceType.tiktokProfile': { ru: 'TikTok профиль', az: 'TikTok profil' },
+  'sourceType.telegramChannel': { ru: 'Telegram канал', az: 'Telegram kanal' },
+  'sourceType.telegramGroup': { ru: 'Telegram группа', az: 'Telegram qrup' },
 
   'sourceStatus.working': { ru: '✓ Работает', az: '✓ İşləyir' },
   'sourceStatus.running': { ru: '● Выполняется', az: '● İcra olunur' },

@@ -9,6 +9,7 @@ import {
   crawlLalafoAz,
   crawlStopAz,
   crawlTapAz,
+  crawlTelegram,
   crawlTikTok,
   crawlUnvanAz,
   crawlVipEmlakAz,
@@ -51,6 +52,7 @@ export interface ConnectorDependencies {
   crawlUnvan?: typeof crawlUnvanAz;
   crawlInstagram?: typeof crawlInstagram;
   crawlTikTok?: typeof crawlTikTok;
+  crawlTelegram?: typeof crawlTelegram;
 }
 
 function permissionDisabledResult(): BinaConnectorResult {
@@ -444,6 +446,18 @@ export function createConnectorRunner(
         const crawlTk = dependencies.crawlTikTok ?? crawlTikTok;
         const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
         return crawlTk({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 10,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'telegram_channel' || detected === 'telegram_group' || (source.type as string) === 'telegram_channel' || (source.type as string) === 'telegram_group') {
+        const crawlTg = dependencies.crawlTelegram ?? crawlTelegram;
+        const startUrl = source.locator.startsWith('http') ? source.locator : (source.locator.startsWith('@') ? `https://t.me/${source.locator.slice(1)}` : `https://${source.locator}`);
+        return crawlTg({
           startUrl,
           maxPages: source.maxPages > 0 ? source.maxPages : 10,
           maxDepth: source.maxDepth,

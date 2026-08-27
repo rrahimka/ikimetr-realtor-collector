@@ -20,6 +20,8 @@ export const SOURCE_TYPE_OPTIONS = [
   { value: 'google_maps_query', labelKey: 'sourceType.googleMaps' },
   { value: 'instagram_profile', labelKey: 'sourceType.instagramProfile' },
   { value: 'tiktok_profile', labelKey: 'sourceType.tiktokProfile' },
+  { value: 'telegram_channel', labelKey: 'sourceType.telegramChannel' },
+  { value: 'telegram_group', labelKey: 'sourceType.telegramGroup' },
   { value: 'website', labelKey: 'sourceType.website' },
   { value: 'listing_page', labelKey: 'sourceType.listingPage' },
 ] as const;
@@ -29,6 +31,9 @@ type FormDefaults = { maxPages: number; maxDepth: number; delayMs: number; langu
 
 function detectClientSourceType(input: string): SourceType | undefined {
   const trimmed = input.trim();
+  if (trimmed.startsWith('@') || trimmed.includes('t.me/') || trimmed.includes('telegram.me/')) {
+    return 'telegram_channel';
+  }
   try {
     const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
     const host = url.hostname.toLowerCase().replace(/^www\./, '');
@@ -45,6 +50,7 @@ function detectClientSourceType(input: string): SourceType | undefined {
     if (host === 'unvan.az') return 'unvan_az';
     if (host.includes('instagram.com')) return 'instagram_profile';
     if (host.includes('tiktok.com')) return 'tiktok_profile';
+    if (host.includes('t.me') || host.includes('telegram.me')) return 'telegram_channel';
   } catch {
     // ignore
   }
@@ -70,7 +76,7 @@ export function getSourceFormDefaults(type: string): FormDefaults {
   ) {
     return { maxPages: 20, maxDepth: 0, delayMs: 1_000, language: 'AZ' };
   }
-  if (type === 'instagram_profile' || type === 'tiktok_profile') {
+  if (type === 'instagram_profile' || type === 'tiktok_profile' || type === 'telegram_channel' || type === 'telegram_group') {
     return { maxPages: 10, maxDepth: 0, delayMs: 2_000, language: 'mixed' };
   }
   return { maxPages: 10, maxDepth: 1, delayMs: 1_000, language: 'AZ' };
