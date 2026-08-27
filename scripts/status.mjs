@@ -26,7 +26,7 @@ try {
   const evidenceCount = db.prepare('SELECT COUNT(*) c FROM evidence').get().c;
   let leadsCount = 0;
   try {
-    leadsCount = db.prepare('SELECT COUNT(*) c FROM leads WHERE status != "expired"').get().c;
+    leadsCount = db.prepare("SELECT COUNT(*) c FROM leads WHERE status != 'expired'").get().c;
   } catch {
     leadsCount = 0;
   }
