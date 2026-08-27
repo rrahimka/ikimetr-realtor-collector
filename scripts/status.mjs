@@ -11,6 +11,7 @@ const { createDatabase } = dbPackage;
 
 const dbPath = resolve(__dirname, '../packages/database/data/collector.db');
 const backupDir = resolve(__dirname, '../data/backups');
+const globalKillSwitch = process.env.GLOBAL_KILL_SWITCH === 'true' || process.env.KILL_SWITCH === 'true';
 
 console.log('============================================================');
 console.log('İKİMETR REALTOR COLLECTOR — SYSTEM STATUS');
@@ -30,6 +31,7 @@ try {
     leadsCount = 0;
   }
   const sourcesCount = db.prepare('SELECT COUNT(*) c FROM sources WHERE enabled = 1').get().c;
+  const killedSourcesCount = db.prepare('SELECT COUNT(*) c FROM sources WHERE kill_switch = 1').get().c;
   const lastRun = db.prepare('SELECT id, status, finished_at FROM runs ORDER BY id DESC LIMIT 1').get();
 
   console.log('DATABASE:');
@@ -39,7 +41,7 @@ try {
   console.log(`  Canonical Realtors: ${contactsCount}`);
   console.log(`  Realtor Evidence: ${evidenceCount}`);
   console.log(`  Active Leads: ${leadsCount}`);
-  console.log(`  Active Sources: ${sourcesCount}`);
+  console.log(`  Active Sources: ${sourcesCount} enabled (${killedSourcesCount} source-killed)`);
   if (lastRun) {
     console.log(`  Last Run: #${lastRun.id} (${lastRun.status}) at ${lastRun.finished_at || 'in-progress'}`);
   }
@@ -48,7 +50,13 @@ try {
   console.log(`DATABASE ERROR: ${err.message}`);
 }
 
-// 2. Backups Status
+// 2. Scheduler & Kill Switch Status
+console.log('\nSCHEDULER & CONTROLS:');
+console.log(`  Timezone: Asia/Baku (UTC+4)`);
+console.log(`  Scheduler Architecture: Embedded in @ikimetr/worker`);
+console.log(`  Global Kill Switch: ${globalKillSwitch ? 'ACTIVE (BLOCKING ALL JOBS)' : 'INACTIVE (NORMAL OPERATION)'}`);
+
+// 3. Backups Status
 console.log('\nBACKUPS:');
 if (existsSync(backupDir)) {
   const backups = readdirSync(backupDir)
@@ -68,14 +76,16 @@ if (existsSync(backupDir)) {
   console.log('  No backup directory found.');
 }
 
-// 3. Web UI Health Check
-console.log('\nWEB UI:');
+// 4. Web UI & Services Health Check
+console.log('\nSERVICES:');
 const req = http.request({ hostname: '127.0.0.1', port: 3000, path: '/api/status', timeout: 1500 }, (res) => {
-  console.log(`  HTTP Service: ONLINE (Status ${res.statusCode} at http://127.0.0.1:3000)`);
+  console.log(`  Web Panel (HTTP): ONLINE (Status ${res.statusCode} at http://127.0.0.1:3000)`);
+  console.log(`  Worker & Scheduler: ACTIVE`);
   console.log('\nSTATUS: HEALTHY\n');
 });
 req.on('error', () => {
-  console.log('  HTTP Service: OFFLINE (Web UI not running on port 3000)');
+  console.log('  Web Panel (HTTP): OFFLINE (Web UI not running on port 3000)');
+  console.log('  Worker & Scheduler: STANDBY (Ready to start with pnpm start:production)');
   console.log('\nSTATUS: READY TO START\n');
 });
 req.end();

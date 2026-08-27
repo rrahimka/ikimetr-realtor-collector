@@ -6,7 +6,7 @@
   "packageManager": "pnpm@11.21.0",
   "engines": { "node": ">=22" },
   "scripts": {
-    "backup": "node scripts/backup.mjs",
+    "backup": "pnpm --filter @ikimetr/worker exec tsx ../../scripts/backup.mjs",
     "build": "pnpm -r --if-present build",
     "db:migrate": "pnpm --filter @ikimetr/database db:migrate",
     "db:seed": "pnpm --filter @ikimetr/database db:seed",
@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "start:local": "node scripts/start-local.mjs",
     "start:production": "node scripts/start-local.mjs",
-    "status": "node scripts/status.mjs",
+    "status": "pnpm --filter @ikimetr/worker exec tsx ../../scripts/status.mjs",
     "test": "vitest run",
     "test:smoke": "pnpm --filter @ikimetr/web test:smoke",
     "typecheck": "pnpm -r --if-present typecheck"

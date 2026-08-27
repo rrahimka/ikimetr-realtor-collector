@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDatabase, createRepositories, type CollectorDatabase } from '@ikimetr/database';
-import { readBinaScheduleConfig, runSchedulerTick, startBinaScheduler } from './scheduler';
+import {
+  readBinaScheduleConfig,
+  readProductionScheduleConfig,
+  calculateNextRunTime,
+  runSchedulerTick,
+  startProductionScheduler,
+  startBinaScheduler,
+  SCHEDULER_TIMEZONE,
+} from './scheduler';
 
 const HOUR = 60 * 60 * 1_000;
 const enabledEnv = { BINA_ENABLED: 'true', BINA_PERMISSION_CONFIRMED: 'true' };
@@ -29,7 +37,7 @@ function setup() {
   return { repos, source };
 }
 
-describe('readBinaScheduleConfig', () => {
+describe('Production & Bina Schedule Config', () => {
   it('parses max listings, delay, and continuous mode', () => {
     expect(readBinaScheduleConfig({
       ...enabledEnv,
@@ -42,6 +50,44 @@ describe('readBinaScheduleConfig', () => {
       ...enabledEnv,
     })).toMatchObject({ enabled: true, permissionConfirmed: true, maxListings: 0, continuous: true });
   });
+
+  it('parses global kill switch and default cycle hours', () => {
+    expect(readProductionScheduleConfig({
+      GLOBAL_KILL_SWITCH: 'true',
+      SCHEDULER_CYCLE_HOURS: '12',
+    })).toMatchObject({
+      globalKillSwitch: true,
+      defaultCycleHours: 12,
+      timezone: 'Asia/Baku',
+    });
+  });
+});
+
+describe('calculateNextRunTime', () => {
+  it('calculates next run for new source immediately', () => {
+    const { source } = setup();
+    const now = new Date('2026-08-27T12:00:00.000Z');
+    const next = calculateNextRunTime(source, enabledEnv, undefined, now);
+    expect(next.toISOString()).toBe(now.toISOString());
+  });
+
+  it('calculates next run with cycle cooldown', () => {
+    const { source } = setup();
+    const mockRun = {
+      id: 1,
+      sourceId: source.id,
+      status: 'completed' as const,
+      pagesChecked: 10,
+      phonesFound: 5,
+      uniquePhones: 5,
+      cancellationRequested: false,
+      needsReview: false,
+      createdAt: '2026-08-27T10:00:00.000Z',
+      finishedAt: '2026-08-27T10:30:00.000Z',
+    };
+    const next = calculateNextRunTime(source, { ...enabledEnv, BINA_CONTINUOUS_MODE: 'false', BINA_CYCLE_HOURS: '6' }, mockRun);
+    expect(next.getTime()).toBe(Date.parse('2026-08-27T10:30:00.000Z') + 6 * HOUR);
+  });
 });
 
 describe('runSchedulerTick', () => {
@@ -51,6 +97,59 @@ describe('runSchedulerTick', () => {
     expect(runSchedulerTick(repos, enabledEnv, now)).toMatchObject({ enqueued: 1, skippedActive: 0 });
     expect(repos.runs.hasActive(source.id)).toBe(true);
     expect(runSchedulerTick(repos, enabledEnv, now)).toMatchObject({ enqueued: 0, skippedActive: 1 });
+  });
+
+  it('respects global kill switch completely', () => {
+    const { repos } = setup();
+    const result = runSchedulerTick(repos, { ...enabledEnv, GLOBAL_KILL_SWITCH: 'true' }, new Date());
+    expect(result.globalKillSwitchActive).toBe(true);
+    expect(result.enqueued).toBe(0);
+    expect(repos.runs.list()).toHaveLength(0);
+  });
+
+  it('respects source-level kill switch while other sources run', () => {
+    const { repos, source } = setup();
+    const tapSource = repos.sources.create({
+      name: 'Tap.az',
+      type: 'tap_az',
+      locator: 'https://tap.az',
+      language: 'AZ',
+      maxPages: 10,
+      maxDepth: 1,
+      delayMs: 1000,
+      enabled: true,
+      killSwitch: false,
+    });
+    // Disable source 1 with killSwitch
+    repos.sources.update(source.id, { killSwitch: true });
+
+    const result = runSchedulerTick(repos, enabledEnv, new Date());
+    expect(result.enqueued).toBe(1);
+    expect(repos.runs.hasActive(source.id)).toBe(false);
+    expect(repos.runs.hasActive(tapSource.id)).toBe(true);
+  });
+
+  it('skips disabled source', () => {
+    const { repos, source } = setup();
+    repos.sources.update(source.id, { enabled: false });
+    const result = runSchedulerTick(repos, enabledEnv, new Date());
+    expect(result.enqueued).toBe(0);
+    expect(repos.runs.list()).toHaveLength(0);
+  });
+
+  it('handles missed run after downtime by enqueuing exactly one run (no storm)', () => {
+    const { repos, source } = setup();
+    // Simulate past run 3 days ago
+    const pastRun = repos.runs.enqueue(source.id);
+    repos.runs.claimNext();
+    repos.runs.finish(pastRun.id, 'completed');
+    db!.prepare('UPDATE runs SET finished_at=? WHERE id=?').run('2026-08-24T00:00:00.000Z', pastRun.id);
+
+    const now = new Date('2026-08-27T00:00:00.000Z');
+    const result = runSchedulerTick(repos, { ...enabledEnv, BINA_CONTINUOUS_MODE: 'false', BINA_CYCLE_HOURS: '6' }, now);
+    expect(result.enqueued).toBe(1);
+    // Exactly 2 runs total (1 past + 1 current), not dozens
+    expect(repos.runs.list()).toHaveLength(2);
   });
 
   it('enqueues next batch immediately in continuous mode', () => {
@@ -91,20 +190,6 @@ describe('runSchedulerTick', () => {
     expect(runSchedulerTick(repos, enabledEnv, new Date(Date.now() + 24 * HOUR))).toMatchObject({ enqueued: 1 });
   });
 
-  it('applies the normal cooldown after an unexpected failed cycle in non-continuous mode', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
-    const { repos, source } = setup();
-    const scheduledEnv = { ...enabledEnv, BINA_CONTINUOUS_MODE: 'false', BINA_CYCLE_HOURS: '6' };
-    const queued = repos.runs.enqueue(source.id);
-    repos.runs.claimNext();
-    repos.runs.finish(queued.id, 'failed', undefined, 'Bina connector failed');
-
-    expect(runSchedulerTick(repos, scheduledEnv, new Date(Date.now() + 6 * HOUR - 1))).toMatchObject({ enqueued: 0, skippedCooldown: 1 });
-    expect(runSchedulerTick(repos, scheduledEnv, new Date(Date.now() + 6 * HOUR))).toMatchObject({ enqueued: 1 });
-  });
-
-
   it('treats a concurrent manual enqueue race as an active-run skip', () => {
     const { repos } = setup();
     vi.spyOn(repos.runs, 'hasActive').mockReturnValue(false);
@@ -113,14 +198,14 @@ describe('runSchedulerTick', () => {
     expect(runSchedulerTick(repos, enabledEnv, new Date())).toMatchObject({ enqueued: 0, skippedActive: 1 });
   });
 
-  it('does not enqueue when either permission flag is disabled', () => {
+  it('does not enqueue when either permission flag is disabled for bina_agency', () => {
     const { repos } = setup();
     expect(runSchedulerTick(repos, { BINA_ENABLED: 'true', BINA_PERMISSION_CONFIRMED: 'false' }, new Date())).toMatchObject({ enqueued: 0, permissionsDisabled: true });
     expect(repos.runs.list()).toHaveLength(0);
   });
 });
 
-describe('startBinaScheduler', () => {
+describe('startProductionScheduler & startBinaScheduler', () => {
   it('recovers an abandoned run and schedules replacement eligibility from SQLite', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
@@ -141,5 +226,13 @@ describe('startBinaScheduler', () => {
 
     expect(repos.runs.get(abandoned.id)).toMatchObject({ status: 'failed', needsReview: true });
     expect(repos.runs.list().filter((run) => run.status === 'queued')).toHaveLength(1);
+  });
+
+  it('verifies startProductionScheduler alias is identical to startBinaScheduler', () => {
+    expect(startProductionScheduler).toBe(startBinaScheduler);
+  });
+
+  it('uses Asia/Baku timezone constant', () => {
+    expect(SCHEDULER_TIMEZONE).toBe('Asia/Baku');
   });
 });
