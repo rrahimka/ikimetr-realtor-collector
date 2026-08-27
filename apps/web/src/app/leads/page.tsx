@@ -3,6 +3,7 @@ import { getRepositories } from '../../lib/db';
 import { getLang } from '../../lib/lang';
 import { formatDateTime, t } from '../../lib/i18n';
 import { toWhatsAppDirectLink, isEligibleWhatsAppMobile } from '../../lib/export';
+import { getSafeSourceUrl, getLeadSourceTooltip, formatPlatformDisplay } from '@ikimetr/core';
 
 export const dynamic = 'force-dynamic';
 
@@ -168,6 +169,9 @@ export default async function LeadsPage({
             {leads.map((l) => {
               const hasMobile = l.normalizedPhone ? isEligibleWhatsAppMobile(l.normalizedPhone) : false;
               const waUrl = hasMobile && l.normalizedPhone ? toWhatsAppDirectLink(l.normalizedPhone) : null;
+              const safeSourceUrl = getSafeSourceUrl(l.sourceUrl);
+              const sourceTooltip = getLeadSourceTooltip(l);
+              const platformDisplay = formatPlatformDisplay(l.sourcePlatform);
 
               return (
                 <tr key={l.id}>
@@ -185,9 +189,13 @@ export default async function LeadsPage({
                   </td>
                   <td>
                     {l.username ? (
-                      <a href={l.sourceUrl} target="_blank" rel="noreferrer">
+                      safeSourceUrl ? (
+                        <a href={safeSourceUrl} target="_blank" rel="noopener noreferrer">
+                          <strong>@{l.username.replace(/^@/, '')}</strong>
+                        </a>
+                      ) : (
                         <strong>@{l.username.replace(/^@/, '')}</strong>
-                      </a>
+                      )
                     ) : (
                       <span>{l.displayName || '—'}</span>
                     )}
@@ -198,7 +206,7 @@ export default async function LeadsPage({
                           <a
                             href={waUrl}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             style={{ marginLeft: '6px', color: '#10b981', fontWeight: 'bold', fontSize: '0.75rem' }}
                             title="Constructed WhatsApp candidate link"
                           >
@@ -235,7 +243,19 @@ export default async function LeadsPage({
                     )}
                   </td>
                   <td>
-                    <strong>{l.sourcePlatform}</strong>
+                    {safeSourceUrl ? (
+                      <a
+                        href={safeSourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={sourceTooltip}
+                        style={{ color: 'inherit', textDecoration: 'none' }}
+                      >
+                        <strong>{platformDisplay} ↗</strong>
+                      </a>
+                    ) : (
+                      <strong>{platformDisplay}</strong>
+                    )}
                     <div className="muted" style={{ fontSize: '0.75rem' }}>{l.sourceSurface}</div>
                   </td>
                   <td>

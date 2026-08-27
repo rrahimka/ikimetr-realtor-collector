@@ -5,6 +5,7 @@ import { getLang } from '../../../lib/lang';
 import { formatDateTime, t } from '../../../lib/i18n';
 import { toWhatsAppDirectLink, isEligibleWhatsAppMobile } from '../../../lib/export';
 import type { LeadStatus } from '@ikimetr/core';
+import { getLeadSourceContext } from '@ikimetr/core';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,9 @@ export default async function LeadDetailPage({
       redirect(`/leads/${leadId}`);
     }
   }
+
+  const sourceContext = getLeadSourceContext(lead);
+  const safeUrl = sourceContext.safeUrl;
 
   return (
     <>
@@ -79,7 +83,7 @@ export default async function LeadDetailPage({
                 <a
                   href={waUrl}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   style={{ marginLeft: '10px', color: '#10b981', fontWeight: 'bold', fontSize: '0.9rem' }}
                 >
                   [Открыть WhatsApp]
@@ -137,71 +141,133 @@ export default async function LeadDetailPage({
 
         {/* Right Panel: Source Evidence & Intent Excerpt */}
         <div className="panel" style={{ padding: '1.5rem' }}>
-          <h3>Источник и распознанный текст</h3>
+          <h3>ИСТОЧНИК</h3>
 
           <div style={{ marginTop: '1rem' }}>
-            <div className="muted" style={{ fontSize: '0.85rem' }}>Платформа и поверхность поиска</div>
-            <div style={{ fontSize: '1rem', marginTop: '2px' }}>
-              <strong>{lead.sourcePlatform}</strong> · <code>{lead.sourceSurface}</code>
+            <div className="muted" style={{ fontSize: '0.85rem' }}>Платформа</div>
+            <div style={{ fontSize: '1rem', fontWeight: 'bold', marginTop: '2px' }}>
+              {sourceContext.platformTitle}
             </div>
           </div>
 
           <div style={{ marginTop: '1rem' }}>
-            <div className="muted" style={{ fontSize: '0.85rem' }}>Ссылка на сообщение / пост</div>
-            <div style={{ marginTop: '2px', wordBreak: 'break-all' }}>
-              <a href={lead.sourceUrl} target="_blank" rel="noreferrer">
-                {lead.sourceUrl}
-              </a>
+            <div className="muted" style={{ fontSize: '0.85rem' }}>Поверхность</div>
+            <div style={{ fontSize: '0.95rem', marginTop: '2px' }}>
+              <code>{lead.sourceSurface}</code>
             </div>
           </div>
 
-          <div style={{ marginTop: '1rem' }}>
-            <div className="muted" style={{ fontSize: '0.85rem' }}>Текст намерения (Excerpt)</div>
-            <div
-              style={{
-                marginTop: '4px',
-                padding: '0.75rem',
-                backgroundColor: 'var(--surface-subtle, #f3f4f6)',
-                borderRadius: '6px',
-                fontSize: '0.95rem',
-                lineHeight: '1.4',
-              }}
-            >
-              &ldquo;{lead.intentExcerpt}&rdquo;
-            </div>
-          </div>
-
-          {lead.parentContext && (
+          {sourceContext.channelOrProfileValue && (
             <div style={{ marginTop: '1rem' }}>
-              <div className="muted" style={{ fontSize: '0.85rem' }}>Контекст родительского поста / темы</div>
-              <div
-                style={{
-                  marginTop: '4px',
-                  padding: '0.5rem 0.75rem',
-                  backgroundColor: 'var(--surface-subtle, #f3f4f6)',
-                  borderRadius: '6px',
-                  fontSize: '0.85rem',
-                  color: 'var(--text-muted, #6b7280)',
-                }}
-              >
-                {lead.parentContext}
+              <div className="muted" style={{ fontSize: '0.85rem' }}>Группа / канал / профиль / страница</div>
+              <div style={{ fontSize: '1rem', fontWeight: 'bold', marginTop: '2px' }}>
+                {sourceContext.channelOrProfileValue}
               </div>
             </div>
           )}
 
           <div style={{ marginTop: '1rem' }}>
-            <div className="muted" style={{ fontSize: '0.85rem' }}>Сигналы уверенности ({(lead.confidence * 100).toFixed(0)}%)</div>
-            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
-              {lead.signals.map((sig, i) => (
-                <span key={i} className="badge" style={{ fontSize: '0.75rem' }}>
-                  {sig}
-                </span>
-              ))}
+            <div className="muted" style={{ fontSize: '0.85rem' }}>Дата обнаружения</div>
+            <div style={{ fontSize: '0.95rem', marginTop: '2px' }}>
+              {formatDateTime(lang, lead.firstSeenAt)}
             </div>
           </div>
 
-          <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Обнаружен: {formatDateTime(lang, lead.firstSeenAt)} | Обновлён: {formatDateTime(lang, lead.lastSeenAt)}
+          {safeUrl ? (
+            <div style={{ marginTop: '1.25rem' }}>
+              <a
+                href={safeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: 'none' }}
+              >
+                <button
+                  type="button"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    fontWeight: 600,
+                  }}
+                >
+                  Открыть оригинал ↗
+                </button>
+              </a>
+              <div className="muted" style={{ fontSize: '0.75rem', marginTop: '4px', wordBreak: 'break-all' }}>
+                {safeUrl}
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: '1.25rem' }}>
+              <button
+                type="button"
+                disabled
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 16px',
+                  opacity: 0.5,
+                  cursor: 'not-allowed',
+                }}
+              >
+                Оригинал недоступен
+              </button>
+            </div>
+          )}
+
+          <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--line)' }}>
+            <h3>Распознанный текст</h3>
+
+            <div style={{ marginTop: '0.75rem' }}>
+              <div className="muted" style={{ fontSize: '0.85rem' }}>Текст намерения (Excerpt)</div>
+              <div
+                style={{
+                  marginTop: '4px',
+                  padding: '0.75rem',
+                  backgroundColor: 'var(--panel-subtle)',
+                  borderRadius: '6px',
+                  fontSize: '0.95rem',
+                  lineHeight: '1.4',
+                }}
+              >
+                &ldquo;{lead.intentExcerpt}&rdquo;
+              </div>
+            </div>
+
+            {lead.parentContext && (
+              <div style={{ marginTop: '1rem' }}>
+                <div className="muted" style={{ fontSize: '0.85rem' }}>Контекст родительского поста / темы</div>
+                <div
+                  style={{
+                    marginTop: '4px',
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: 'var(--panel-subtle)',
+                    borderRadius: '6px',
+                    fontSize: '0.85rem',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {lead.parentContext}
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: '1rem' }}>
+              <div className="muted" style={{ fontSize: '0.85rem' }}>Сигналы уверенности ({(lead.confidence * 100).toFixed(0)}%)</div>
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+                {lead.signals.map((sig, i) => (
+                  <span key={i} className="badge" style={{ fontSize: '0.75rem' }}>
+                    {sig}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Обнаружен: {formatDateTime(lang, lead.firstSeenAt)} | Обновлён: {formatDateTime(lang, lead.lastSeenAt)}
+            </div>
           </div>
         </div>
       </div>
