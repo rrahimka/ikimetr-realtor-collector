@@ -57,8 +57,9 @@ const SELLER_PATTERNS = [
 
 const RENTER_PATTERNS = [
   // AZ
-  /kiraye\s+axtar/i, /kiraye\s+.*(?:menzil|ev|otaq|lazim)/i,
-  /icare\s+axtar/i, /ayliq\s+kiraye\s+axtar/i, /kiraye\s+tutmaq/i,
+  /kiraye\s+axtar/i, /kiraye\s+ev\s+axtar/i, /kiraye\s+menzil\s+axtar/i,
+  /kiraye\s+lazim/i, /kiraye\s+tut/i, /kiraye\s+gotur/i, /kiraye\s+istey/i,
+  /icare\s+axtar/i, /ayliq\s+kiraye\s+axtar/i,
   // RU
   /сниму\s+.*(?:квартир|дом|жиль|комнат)/i,
   /ищу\s+.*(?:в\s+аренду|аренду)/i,
@@ -71,7 +72,8 @@ const RENTER_PATTERNS = [
 
 const LANDLORD_PATTERNS = [
   // AZ
-  /kiraye\s+verir/i, /icareye\s+verir/i, /ev\s+kiraye\s+ver/i, /menzil\s+kiraye\s+ver/i,
+  /kiraye\s+ver/i, /icareye\s+ver/i, /ev\s+kiraye\s+ver/i, /menzil\s+kiraye\s+ver/i,
+  /oz\s+menzilimi\s+kiraye/i, /oz\s+evimi\s+kiraye/i,
   // RU
   /сдам\s+.*(?:квартир|дом|жиль|комнат)/i,
   /сдаю\s+.*(?:квартир|дом|жиль|комнат)/i,
@@ -91,9 +93,10 @@ const INVESTOR_PATTERNS = [
 
 const REALTOR_REQUEST_PATTERNS = [
   // AZ
-  /musteri\s+ucun/i, /musterim\s+var/i, /musteriye\s+.*axtar/i,
+  /musteri(?:miz|m|ye)?\s+ucun/i, /real\s+musteri/i, /musterim\s+var/i, /musteri(?:miz|m|ye)?\s+.*axtar/i,
   // RU
-  /для\s+клиента/i, /клиенту\s+нужна/i, /ищу\s+под\s+клиента/i, /клиент\s+ищет/i, /есть\s+клиент\s+на/i,
+  /для\s+(?:своего\s+)?клиента/i, /клиент(?:у|ам|а)?\s+(?:нужн|ищет|подбираем)/i,
+  /ищу\s+под\s+клиента/i, /есть\s+клиент\s+на/i, /под\s+клиента/i,
   // EN
   /for\s+client/i, /looking\s+for\s+client/i, /client\s+looking/i
 ];
@@ -365,12 +368,12 @@ export function classifyLeadIntent(
   let leadType: LeadType = 'unknown';
   if (isRealtorRequest) {
     leadType = 'realtor_request';
-  } else if (isInvestor) {
-    leadType = 'investor';
-  } else if (isRenter) {
-    leadType = 'renter';
   } else if (isLandlord) {
     leadType = 'landlord';
+  } else if (isRenter) {
+    leadType = 'renter';
+  } else if (isInvestor) {
+    leadType = 'investor';
   } else if (isSeller) {
     leadType = 'seller';
   } else if (isBuyer) {

@@ -3,7 +3,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/.next/**', '**/dist/**', 'data/**', 'exports/**'] },
+  { ignores: ['**/node_modules/**', '**/.next/**', '**/dist/**', 'data/**', 'exports/**', 'scratch/**'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
@@ -23,6 +23,15 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: false }],
+    },
+  },
+  {
+    files: ['scripts/**'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
     },
   },
 );

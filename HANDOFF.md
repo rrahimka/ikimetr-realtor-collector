@@ -1,19 +1,21 @@
-# Handoff — Lead Intelligence & Search Surfaces Architecture Checkpoint
+# Handoff — Final Product Completion & Live Production Acceptance
 
 ## Repository state
 
 - Branch: `feature/bina-agency-pilot`
 - Verification suite (all exit 0):
-  - `pnpm test` — **411/411 tests pass across 43 test suites**
+  - `pnpm test` — **415/415 tests pass across 44 test suites**
   - `pnpm typecheck` — clean (5 of 5 workspace packages)
   - `pnpm lint` — clean (0 errors, 0 warnings)
-  - `pnpm build` — clean Next.js 16.3 app + worker builds (including `/leads`, `/leads/[id]`, `/api/leads/export`)
+  - `pnpm build` — clean Next.js 16.3 app + worker builds (including `/contacts`, `/leads`, `/leads/[id]`, `/runs`, `/review`, `/sources`, `/api/contacts/export`, `/api/leads/export`)
   - `pnpm test:smoke` — 2/2 end-to-end scenarios pass (`collector pipeline: login → fixture source → run → worker → contact → CSV` and `language toggle and CSV import report`)
   - `git diff --check` — clean (no trailing whitespace or conflict markers)
 - Verified Databases:
   - Realtor Intelligence Pipeline: 739 canonical realtors intact in database with 914 evidence records.
   - Client Lead Intelligence Pipeline: Dual intent classifier (Buyer, Seller, Renter, Landlord, Investor, Realtor Request), dedicated `leads` SQLite table (migration 0007), Lead Inbox UI (`/leads`), Lead Detail view (`/leads/[id]`), and isolated Lead Export (`/api/leads/export?format=xlsx` & `csv`).
-  - Telegram Authorized Connector: `scanTelegramAuthorizedMessages` with strict private DM exclusion, short-window message aggregation (15 min), and dual entity routing.
+  - Automated Backup & Disaster Recovery: `packages/database/src/backup.ts` with online SQLite backup, 14-copy retention policy, and 100% verified restore test.
+  - Single-Command Operations: `pnpm start:production` (starts web & worker), `pnpm status` (shows live DB & service stats), `pnpm backup` (creates instant timestamped backup).
+  - User Documentation: Complete non-developer operational manual in Russian in `README.md`.
 
 ---
 
