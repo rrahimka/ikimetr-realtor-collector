@@ -1,4 +1,4 @@
-import type { Classification, EvidenceInput, SourceInput } from '@ikimetr/core';
+import type { Classification, EvidenceInput, SourceInput, LeadInput, LeadRecord, LeadType, LeadStatus, ConfidenceLevel } from '@ikimetr/core';
 import type { CollectorDatabase } from './client';
 
 const now = () => new Date().toISOString();
@@ -9,6 +9,38 @@ type BinaRunSummary = { outcomes: Record<string, number>; newContacts: number; d
 function mapSource(row: Record<string, unknown>) { return { id: row.id as number, name: row.name as string, type: row.type as SourceInput['type'], locator: row.locator as string, language: row.language as SourceInput['language'], maxPages: row.max_pages as number, maxDepth: row.max_depth as number, delayMs: row.delay_ms as number, enabled: Boolean(row.enabled), killSwitch: Boolean(row.kill_switch) }; }
 function mapRun(row: Record<string, unknown>) { return { id: row.id as number, sourceId: row.source_id as number, status: row.status as RunStatus, startedAt: row.started_at as string | null, finishedAt: row.finished_at as string | null, pagesChecked: row.pages_checked as number, phonesFound: row.phones_found as number, uniquePhones: row.unique_phones as number, error: row.error as string | null, cancellationRequested: Boolean(row.cancellation_requested), needsReview: Boolean(row.needs_review) }; }
 function mapContact(row: Record<string, unknown>) { return { id: row.id as number, normalizedPhone: row.normalized_phone as string, originalPhone: row.original_phone as string, isForeign: Boolean(row.is_foreign), type: row.type as string, name: row.name as string | null, agency: row.agency as string | null, city: row.city as string | null, username: row.username as string | null, platform: row.platform as string | null, confidence: row.confidence as number, reasons: JSON.parse(row.reasons_json as string) as string[], verificationStatus: row.verification_status as string, mergedIntoId: row.merged_into_id as number | null, firstSeenAt: row.first_seen_at as string, lastSeenAt: row.last_seen_at as string }; }
+function mapLead(row: Record<string, unknown>): LeadRecord {
+  return {
+    id: row.id as number,
+    leadType: row.lead_type as LeadType,
+    status: row.status as LeadStatus,
+    sourcePlatform: row.source_platform as string,
+    sourceSurface: row.source_surface as string,
+    sourceUrl: row.source_url as string,
+    externalId: (row.external_id as string | null) || null,
+    username: (row.username as string | null) || null,
+    displayName: (row.display_name as string | null) || null,
+    publicPhone: (row.public_phone as string | null) || null,
+    normalizedPhone: (row.normalized_phone as string | null) || null,
+    intentExcerpt: row.intent_excerpt as string,
+    city: (row.city as string | null) || null,
+    district: (row.district as string | null) || null,
+    metro: (row.metro as string | null) || null,
+    propertyType: (row.property_type as string | null) || null,
+    rooms: typeof row.rooms === 'number' ? row.rooms : null,
+    budgetMin: typeof row.budget_min === 'number' ? row.budget_min : null,
+    budgetMax: typeof row.budget_max === 'number' ? row.budget_max : null,
+    currency: (row.currency as string) || 'AZN',
+    confidence: (row.confidence as number) || 0.5,
+    confidenceLevel: (row.confidence_level as ConfidenceLevel) || 'medium',
+    signals: row.signals_json ? (JSON.parse(row.signals_json as string) as string[]) : [],
+    parentContext: (row.parent_context as string | null) || null,
+    isRealtorSender: Boolean(row.is_realtor_sender),
+    firstSeenAt: row.first_seen_at as string,
+    lastSeenAt: row.last_seen_at as string,
+    expiresAt: row.expires_at as string,
+  };
+}
 
 export function createRepositories(db: CollectorDatabase) {
   const audit = {
@@ -212,13 +244,197 @@ export function createRepositories(db: CollectorDatabase) {
         INSERT INTO source_checkpoints(source_id, checkpoint_type, last_checkpoint_id, items_processed, updated_at)
         VALUES(?, ?, ?, ?, ?)
         ON CONFLICT(source_id) DO UPDATE SET
-          checkpoint_type=excluded.checkpoint_type,
-          last_checkpoint_id=excluded.last_checkpoint_id,
-          items_processed=excluded.items_processed,
-          updated_at=excluded.updated_at
+        checkpoint_type=excluded.checkpoint_type,
+        last_checkpoint_id=excluded.last_checkpoint_id,
+        items_processed=excluded.items_processed,
+        updated_at=excluded.updated_at
       `).run(sourceId, checkpointType, lastCheckpointId, itemsProcessed, time);
     },
   };
-  const dashboard={stats(){return{sources:(db.prepare('SELECT COUNT(*) count FROM sources').get() as {count:number}).count,runs:(db.prepare('SELECT COUNT(*) count FROM runs').get() as {count:number}).count,contacts:(db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL').get() as {count:number}).count,newContacts:(db.prepare("SELECT COUNT(*) count FROM contacts WHERE first_seen_at>=datetime('now','-1 day')").get() as {count:number}).count,errors:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status='failed'").get() as {count:number}).count,active:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status IN ('queued','running')").get() as {count:number}).count};}};
-  return { sources, keywords, runs, contacts, evidence, reviews, audit, dashboard, binaListings, recipes, checkpoints };
+  const leads = {
+    create(input: LeadInput): { lead: LeadRecord; isNew: boolean } {
+      const time = now();
+      const expiresAt = input.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Check dedup: same normalizedPhone or same (sourcePlatform + username) with same leadType
+      let existingId: number | undefined;
+      if (input.normalizedPhone) {
+        const row = db.prepare('SELECT id FROM leads WHERE normalized_phone=? AND lead_type=? LIMIT 1')
+          .get(input.normalizedPhone, input.leadType) as { id: number } | undefined;
+        if (row) existingId = row.id;
+      }
+      if (!existingId && input.username && input.sourcePlatform) {
+        const row = db.prepare('SELECT id FROM leads WHERE source_platform=? AND username=? AND lead_type=? LIMIT 1')
+          .get(input.sourcePlatform, input.username, input.leadType) as { id: number } | undefined;
+        if (row) existingId = row.id;
+      }
+
+      if (existingId) {
+        db.prepare(`
+          UPDATE leads SET
+            last_seen_at = ?,
+            intent_excerpt = ?,
+            confidence = MAX(confidence, ?),
+            confidence_level = CASE WHEN ? >= 0.75 THEN 'high' WHEN ? >= 0.45 THEN 'medium' ELSE 'low' END,
+            signals_json = ?,
+            expires_at = ?,
+            budget_max = COALESCE(?, budget_max),
+            budget_min = COALESCE(?, budget_min),
+            rooms = COALESCE(?, rooms),
+            property_type = COALESCE(?, property_type),
+            district = COALESCE(?, district),
+            metro = COALESCE(?, metro)
+          WHERE id = ?
+        `).run(
+          time,
+          input.intentExcerpt,
+          input.confidence || 0.5,
+          input.confidence || 0.5,
+          input.confidence || 0.5,
+          JSON.stringify(input.signals || []),
+          expiresAt,
+          input.budgetMax ?? null,
+          input.budgetMin ?? null,
+          input.rooms ?? null,
+          input.propertyType ?? null,
+          input.district ?? null,
+          input.metro ?? null,
+          existingId
+        );
+        return { lead: this.get(existingId)!, isNew: false };
+      }
+
+      const result = db.prepare(`
+        INSERT INTO leads(
+          lead_type, status, source_platform, source_surface, source_url,
+          external_id, username, display_name, public_phone, normalized_phone,
+          intent_excerpt, city, district, metro, property_type, rooms,
+          budget_min, budget_max, currency, confidence, confidence_level,
+          signals_json, parent_context, is_realtor_sender,
+          first_seen_at, last_seen_at, expires_at
+        ) VALUES(
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?
+        )
+      `).run(
+        input.leadType,
+        input.status || 'new',
+        input.sourcePlatform,
+        input.sourceSurface,
+        input.sourceUrl,
+        input.externalId ?? null,
+        input.username ?? null,
+        input.displayName ?? null,
+        input.publicPhone ?? null,
+        input.normalizedPhone ?? null,
+        input.intentExcerpt,
+        input.city ?? null,
+        input.district ?? null,
+        input.metro ?? null,
+        input.propertyType ?? null,
+        input.rooms ?? null,
+        input.budgetMin ?? null,
+        input.budgetMax ?? null,
+        input.currency || 'AZN',
+        input.confidence ?? 0.5,
+        input.confidenceLevel || 'medium',
+        JSON.stringify(input.signals || []),
+        input.parentContext ?? null,
+        Number(Boolean(input.isRealtorSender)),
+        input.firstSeenAt || time,
+        input.lastSeenAt || time,
+        expiresAt
+      );
+
+      return { lead: this.get(Number(result.lastInsertRowid))!, isNew: true };
+    },
+
+    get(id: number) {
+      const row = db.prepare('SELECT * FROM leads WHERE id=?').get(id) as Record<string, unknown> | undefined;
+      return row ? mapLead(row) : undefined;
+    },
+
+    list(filters?: {
+      leadType?: string | undefined;
+      status?: string | undefined;
+      confidenceLevel?: string | undefined;
+      sourcePlatform?: string | undefined;
+      search?: string | undefined;
+      minConfidence?: number | undefined;
+    }) {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+
+      if (filters?.leadType && filters.leadType !== 'all') {
+        conditions.push('lead_type = ?');
+        params.push(filters.leadType);
+      }
+      if (filters?.status && filters.status !== 'all') {
+        conditions.push('status = ?');
+        params.push(filters.status);
+      }
+      if (filters?.confidenceLevel && filters.confidenceLevel !== 'all') {
+        conditions.push('confidence_level = ?');
+        params.push(filters.confidenceLevel);
+      }
+      if (filters?.sourcePlatform && filters.sourcePlatform !== 'all') {
+        conditions.push('source_platform = ?');
+        params.push(filters.sourcePlatform);
+      }
+      if (filters?.minConfidence) {
+        conditions.push('confidence >= ?');
+        params.push(filters.minConfidence);
+      }
+      if (filters?.search) {
+        conditions.push('(username LIKE ? OR display_name LIKE ? OR intent_excerpt LIKE ? OR district LIKE ? OR city LIKE ?)');
+        const s = `%${filters.search}%`;
+        params.push(s, s, s, s, s);
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      const rows = db.prepare(`SELECT * FROM leads ${whereClause} ORDER BY id DESC`).all(...params) as Record<string, unknown>[];
+      return rows.map(mapLead);
+    },
+
+    updateStatus(id: number, status: LeadStatus) {
+      db.prepare('UPDATE leads SET status=? WHERE id=?').run(status, id);
+      return this.get(id)!;
+    },
+
+    stats() {
+      const total = (db.prepare('SELECT COUNT(*) count FROM leads').get() as { count: number }).count;
+      const active = (db.prepare("SELECT COUNT(*) count FROM leads WHERE status IN ('new','qualified','needs_review')").get() as { count: number }).count;
+      const buyers = (db.prepare("SELECT COUNT(*) count FROM leads WHERE lead_type='buyer'").get() as { count: number }).count;
+      const sellers = (db.prepare("SELECT COUNT(*) count FROM leads WHERE lead_type='seller'").get() as { count: number }).count;
+      const renters = (db.prepare("SELECT COUNT(*) count FROM leads WHERE lead_type='renter'").get() as { count: number }).count;
+      const landlords = (db.prepare("SELECT COUNT(*) count FROM leads WHERE lead_type='landlord'").get() as { count: number }).count;
+      const investors = (db.prepare("SELECT COUNT(*) count FROM leads WHERE lead_type='investor'").get() as { count: number }).count;
+      const realtorRequests = (db.prepare("SELECT COUNT(*) count FROM leads WHERE lead_type='realtor_request'").get() as { count: number }).count;
+      const highConfidence = (db.prepare("SELECT COUNT(*) count FROM leads WHERE confidence_level='high'").get() as { count: number }).count;
+      const today = (db.prepare("SELECT COUNT(*) count FROM leads WHERE first_seen_at >= datetime('now','-1 day')").get() as { count: number }).count;
+
+      return {
+        total,
+        active,
+        buyers,
+        sellers,
+        renters,
+        landlords,
+        investors,
+        realtorRequests,
+        highConfidence,
+        today,
+      };
+    },
+
+    exportRows(filters?: { leadType?: string; status?: string }) {
+      return this.list(filters);
+    },
+  };
+  const dashboard={stats(){return{sources:(db.prepare('SELECT COUNT(*) count FROM sources').get() as {count:number}).count,runs:(db.prepare('SELECT COUNT(*) count FROM runs').get() as {count:number}).count,contacts:(db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL').get() as {count:number}).count,newContacts:(db.prepare("SELECT COUNT(*) count FROM contacts WHERE first_seen_at>=datetime('now','-1 day')").get() as {count:number}).count,errors:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status='failed'").get() as {count:number}).count,active:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status IN ('queued','running')").get() as {count:number}).count,leads:(db.prepare("SELECT COUNT(*) count FROM leads").get() as {count:number}).count,activeLeads:(db.prepare("SELECT COUNT(*) count FROM leads WHERE status IN ('new','qualified','needs_review')").get() as {count:number}).count};}};
+  return { sources, keywords, runs, contacts, evidence, reviews, audit, dashboard, binaListings, recipes, checkpoints, leads };
 }

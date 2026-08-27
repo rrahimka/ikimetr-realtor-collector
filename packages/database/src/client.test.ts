@@ -90,12 +90,13 @@ describe('createDatabase', () => {
     legacy.close();
 
     const migrated = createDatabase(dbPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(6);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(7);
     expect(migrated.prepare('SELECT id,source_id,status,pages_checked FROM runs').all()).toEqual([
       { id: 7, source_id: 1, status: 'completed', pages_checked: 3 },
     ]);
     expect((migrated.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='runs'").get() as { sql: string }).sql).toContain("'blocked'");
     expect((migrated.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='adapter_recipes'").get() as { sql: string })).toBeDefined();
+    expect((migrated.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='leads'").get() as { sql: string })).toBeDefined();
     expect(migrated.pragma('foreign_key_check')).toEqual([]);
     migrated.close();
 

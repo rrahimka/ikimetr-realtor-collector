@@ -124,3 +124,110 @@ export type SourceType = (typeof SOURCE_TYPES)[number];
 export type ContactType = 'agent' | 'agency' | 'owner' | 'unknown' | 'suspicious';
 export type ExplicitSellerType = 'agency' | 'agent' | 'owner' | 'unknown';
 export interface Classification { type: ContactType; confidence: number; reasons: string[]; ruleVersion: '1.0.0'; classifiedAt: string }
+
+export const LEAD_TYPES = [
+  'buyer',
+  'seller',
+  'renter',
+  'landlord',
+  'investor',
+  'realtor_request',
+  'unknown',
+] as const;
+
+export const LEAD_STATUSES = [
+  'new',
+  'qualified',
+  'needs_review',
+  'contacted',
+  'converted',
+  'rejected',
+  'expired',
+] as const;
+
+export const CONFIDENCE_LEVELS = ['high', 'medium', 'low'] as const;
+
+export const SEARCH_SURFACES = [
+  'profile_name',
+  'username',
+  'bio',
+  'posts',
+  'captions',
+  'comments',
+  'replies',
+  'hashtags',
+  'channel_name',
+  'group_name',
+  'group_description',
+  'message_text',
+  'phone_match',
+  'agency_name',
+  'geo_keyword',
+] as const;
+
+export type LeadType = (typeof LEAD_TYPES)[number];
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+export type ConfidenceLevel = (typeof CONFIDENCE_LEVELS)[number];
+export type SearchSurface = (typeof SEARCH_SURFACES)[number];
+
+export interface LeadInput {
+  id?: number | undefined;
+  leadType: LeadType;
+  status?: LeadStatus | undefined;
+  sourcePlatform: string;
+  sourceSurface: string;
+  sourceUrl: string;
+  externalId?: string | null | undefined;
+  username?: string | null | undefined;
+  displayName?: string | null | undefined;
+  publicPhone?: string | null | undefined;
+  normalizedPhone?: string | null | undefined;
+  intentExcerpt: string;
+  city?: string | null | undefined;
+  district?: string | null | undefined;
+  metro?: string | null | undefined;
+  propertyType?: string | null | undefined;
+  rooms?: number | null | undefined;
+  budgetMin?: number | null | undefined;
+  budgetMax?: number | null | undefined;
+  currency?: string | undefined;
+  confidence?: number | undefined;
+  confidenceLevel?: ConfidenceLevel | undefined;
+  signals?: string[] | undefined;
+  parentContext?: string | null | undefined;
+  isRealtorSender?: boolean | undefined;
+  firstSeenAt?: string | undefined;
+  lastSeenAt?: string | undefined;
+  expiresAt?: string | undefined;
+}
+
+export interface LeadRecord {
+  id: number;
+  leadType: LeadType;
+  status: LeadStatus;
+  sourcePlatform: string;
+  sourceSurface: string;
+  sourceUrl: string;
+  externalId?: string | null | undefined;
+  username?: string | null | undefined;
+  displayName?: string | null | undefined;
+  publicPhone?: string | null | undefined;
+  normalizedPhone?: string | null | undefined;
+  intentExcerpt: string;
+  city?: string | null | undefined;
+  district?: string | null | undefined;
+  metro?: string | null | undefined;
+  propertyType?: string | null | undefined;
+  rooms?: number | null | undefined;
+  budgetMin?: number | null | undefined;
+  budgetMax?: number | null | undefined;
+  currency: string;
+  confidence: number;
+  confidenceLevel: ConfidenceLevel;
+  signals: string[];
+  parentContext?: string | null | undefined;
+  isRealtorSender: boolean;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+}

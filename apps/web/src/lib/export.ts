@@ -139,3 +139,158 @@ export function generateWhatsAppLinksTxt(contacts: CanonicalContactExportRow[]):
 }
 
 export { contactsCsv };
+
+import type { LeadRecord } from '@ikimetr/core';
+
+/**
+ * Generates XLSX Buffer for Lead Records.
+ */
+export async function generateLeadsXlsx(leads: LeadRecord[]): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'İkimetr Lead Intelligence';
+  workbook.created = new Date();
+
+  const worksheet = workbook.addWorksheet('Leads', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+
+  worksheet.columns = [
+    { header: 'Intent', key: 'intent', width: 18 },
+    { header: 'Username / Name', key: 'name', width: 22 },
+    { header: 'Public Phone', key: 'phone', width: 18 },
+    { header: 'WhatsApp Link', key: 'whatsappUrl', width: 32 },
+    { header: 'Platform', key: 'platform', width: 14 },
+    { header: 'Surface', key: 'surface', width: 18 },
+    { header: 'City', key: 'city', width: 12 },
+    { header: 'District', key: 'district', width: 16 },
+    { header: 'Metro', key: 'metro', width: 16 },
+    { header: 'Property Type', key: 'propertyType', width: 16 },
+    { header: 'Rooms', key: 'rooms', width: 10 },
+    { header: 'Budget Min', key: 'budgetMin', width: 14 },
+    { header: 'Budget Max', key: 'budgetMax', width: 14 },
+    { header: 'Currency', key: 'currency', width: 10 },
+    { header: 'Confidence', key: 'confidence', width: 16 },
+    { header: 'Status', key: 'status', width: 14 },
+    { header: 'Intent Excerpt', key: 'excerpt', width: 45 },
+    { header: 'Source URL', key: 'sourceUrl', width: 35 },
+    { header: 'First Seen', key: 'firstSeen', width: 22 },
+    { header: 'Last Seen', key: 'lastSeen', width: 22 },
+    { header: 'Expires At', key: 'expiresAt', width: 22 },
+  ];
+
+  // Header style
+  worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  worksheet.getRow(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF1E3A8A' },
+  };
+
+  for (const l of leads) {
+    const hasMobile = l.normalizedPhone ? isEligibleWhatsAppMobile(l.normalizedPhone) : false;
+    const whatsappUrl = hasMobile && l.normalizedPhone ? toWhatsAppDirectLink(l.normalizedPhone) : '';
+
+    const row = worksheet.addRow({
+      intent: l.leadType.toUpperCase(),
+      name: l.username ? `@${l.username.replace(/^@/, '')}` : (l.displayName || ''),
+      phone: l.normalizedPhone || l.publicPhone || '',
+      whatsappUrl,
+      platform: l.sourcePlatform,
+      surface: l.sourceSurface,
+      city: l.city || 'Bakı',
+      district: l.district || '',
+      metro: l.metro || '',
+      propertyType: l.propertyType || '',
+      rooms: l.rooms ?? '',
+      budgetMin: l.budgetMin ?? '',
+      budgetMax: l.budgetMax ?? '',
+      currency: l.currency,
+      confidence: `${l.confidenceLevel.toUpperCase()} (${(l.confidence * 100).toFixed(0)}%)`,
+      status: l.status,
+      excerpt: l.intentExcerpt,
+      sourceUrl: l.sourceUrl,
+      firstSeen: l.firstSeenAt,
+      lastSeen: l.lastSeenAt,
+      expiresAt: l.expiresAt,
+    });
+
+    if (l.normalizedPhone) {
+      row.getCell('phone').numFmt = '@';
+    }
+  }
+
+  const arrayBuffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+/**
+ * Generates CSV string for Lead Records.
+ */
+export function generateLeadsCsv(leads: LeadRecord[]): string {
+  const headers = [
+    'intent',
+    'username',
+    'display_name',
+    'public_phone',
+    'normalized_phone',
+    'whatsapp_url',
+    'platform',
+    'surface',
+    'city',
+    'district',
+    'metro',
+    'property_type',
+    'rooms',
+    'budget_min',
+    'budget_max',
+    'currency',
+    'confidence_level',
+    'confidence_score',
+    'status',
+    'intent_excerpt',
+    'source_url',
+    'first_seen_at',
+    'last_seen_at',
+    'expires_at',
+  ];
+
+  const escapeCsv = (val: string | number | boolean | null | undefined) => {
+    if (val === null || val === undefined) return '""';
+    const s = typeof val === 'string' ? val : String(val);
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+
+  const rows = leads.map((l) => {
+    const hasMobile = l.normalizedPhone ? isEligibleWhatsAppMobile(l.normalizedPhone) : false;
+    const whatsappUrl = hasMobile && l.normalizedPhone ? toWhatsAppDirectLink(l.normalizedPhone) : '';
+
+    return [
+      escapeCsv(l.leadType),
+      escapeCsv(l.username),
+      escapeCsv(l.displayName),
+      escapeCsv(l.publicPhone),
+      escapeCsv(l.normalizedPhone),
+      escapeCsv(whatsappUrl),
+      escapeCsv(l.sourcePlatform),
+      escapeCsv(l.sourceSurface),
+      escapeCsv(l.city || 'Bakı'),
+      escapeCsv(l.district),
+      escapeCsv(l.metro),
+      escapeCsv(l.propertyType),
+      escapeCsv(l.rooms),
+      escapeCsv(l.budgetMin),
+      escapeCsv(l.budgetMax),
+      escapeCsv(l.currency),
+      escapeCsv(l.confidenceLevel),
+      escapeCsv(l.confidence),
+      escapeCsv(l.status),
+      escapeCsv(l.intentExcerpt),
+      escapeCsv(l.sourceUrl),
+      escapeCsv(l.firstSeenAt),
+      escapeCsv(l.lastSeenAt),
+      escapeCsv(l.expiresAt),
+    ].join(',');
+  });
+
+  return '\uFEFF' + [headers.join(','), ...rows].join('\n');
+}

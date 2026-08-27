@@ -170,4 +170,67 @@ describe('repositories', () => {
     expect(repos.sources.list().filter((s) => s.type === 'test_fixture')).toHaveLength(1);
     expect(repos.keywords.list()).toHaveLength(8);
   });
+
+  it('manages leads, deduplicates by phone/platform, and updates status', () => {
+    const repos = setup();
+    const lead1 = repos.leads.create({
+      leadType: 'buyer',
+      status: 'new',
+      sourcePlatform: 'telegram',
+      sourceSurface: 'message_text',
+      sourceUrl: 'https://t.me/baku_emlak/123',
+      username: 'baku_buyer_99',
+      displayName: 'Elvin',
+      publicPhone: '0501112233',
+      normalizedPhone: '+994501112233',
+      intentExcerpt: 'Yasamalda 2 otaqlı mənzil axtarıram',
+      district: 'Yasamal',
+      propertyType: 'apartment',
+      rooms: 2,
+      budgetMax: 180000,
+      currency: 'AZN',
+      confidence: 0.85,
+      confidenceLevel: 'high',
+      signals: ['buyer:axtariram', 'geo:Yasamal'],
+    });
+
+    expect(lead1.isNew).toBe(true);
+    expect(lead1.lead.id).toBeGreaterThan(0);
+    expect(lead1.lead.leadType).toBe('buyer');
+    expect(lead1.lead.district).toBe('Yasamal');
+
+    // Duplicate by phone should update existing lead without creating a second row
+    const lead2 = repos.leads.create({
+      leadType: 'buyer',
+      status: 'new',
+      sourcePlatform: 'telegram',
+      sourceSurface: 'message_text',
+      sourceUrl: 'https://t.me/baku_emlak/124',
+      username: 'baku_buyer_99',
+      normalizedPhone: '+994501112233',
+      intentExcerpt: 'Yasamalda mənzil axtarıram təcili',
+      budgetMax: 190000,
+      confidence: 0.9,
+      confidenceLevel: 'high',
+      signals: ['buyer:axtariram'],
+    });
+
+    expect(lead2.isNew).toBe(false);
+    expect(lead2.lead.id).toBe(lead1.lead.id);
+    expect(lead2.lead.budgetMax).toBe(190000);
+
+    // List and filter
+    const all = repos.leads.list();
+    expect(all).toHaveLength(1);
+
+    // Update status
+    const updated = repos.leads.updateStatus(lead1.lead.id, 'qualified');
+    expect(updated.status).toBe('qualified');
+
+    // Stats
+    const stats = repos.leads.stats();
+    expect(stats.total).toBe(1);
+    expect(stats.buyers).toBe(1);
+    expect(stats.highConfidence).toBe(1);
+  });
 });

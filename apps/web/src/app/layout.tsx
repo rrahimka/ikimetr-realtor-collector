@@ -16,6 +16,7 @@ const nav = [
   ['/sources', 'nav.sources'],
   ['/keywords', 'nav.keywords'],
   ['/contacts', 'nav.contacts'],
+  ['/leads', 'nav.leads'],
   ['/runs', 'nav.runs'],
   ['/review', 'nav.review'],
 ] as const;

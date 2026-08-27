@@ -1,15 +1,19 @@
-# Handoff — Phase 2 & 3 Mass Source Expansion & Production Verification Checkpoint
+# Handoff — Lead Intelligence & Search Surfaces Architecture Checkpoint
 
 ## Repository state
 
 - Branch: `feature/bina-agency-pilot`
 - Verification suite (all exit 0):
-  - `pnpm test` — **321/321 tests pass across 33 test suites**
+  - `pnpm test` — **411/411 tests pass across 43 test suites**
   - `pnpm typecheck` — clean (5 of 5 workspace packages)
   - `pnpm lint` — clean (0 errors, 0 warnings)
-  - `pnpm build` — clean Next.js 16.3 app + worker builds
+  - `pnpm build` — clean Next.js 16.3 app + worker builds (including `/leads`, `/leads/[id]`, `/api/leads/export`)
   - `pnpm test:smoke` — 2/2 end-to-end scenarios pass (`collector pipeline: login → fixture source → run → worker → contact → CSV` and `language toggle and CSV import report`)
   - `git diff --check` — clean (no trailing whitespace or conflict markers)
+- Verified Databases:
+  - Realtor Intelligence Pipeline: 739 canonical realtors intact in database with 914 evidence records.
+  - Client Lead Intelligence Pipeline: Dual intent classifier (Buyer, Seller, Renter, Landlord, Investor, Realtor Request), dedicated `leads` SQLite table (migration 0007), Lead Inbox UI (`/leads`), Lead Detail view (`/leads/[id]`), and isolated Lead Export (`/api/leads/export?format=xlsx` & `csv`).
+  - Telegram Authorized Connector: `scanTelegramAuthorizedMessages` with strict private DM exclusion, short-window message aggregation (15 min), and dual entity routing.
 
 ---
 

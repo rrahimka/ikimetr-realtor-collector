@@ -5,13 +5,13 @@ export interface ConnectorEvidence {
   locationType: 'profile' | 'listing' | 'post' | 'comment';
   excerpt: string;
   rawPhone: string;
-  name?: string;
-  agency?: string;
-  city?: string;
-  username?: string;
+  name?: string | undefined;
+  agency?: string | undefined;
+  city?: string | undefined;
+  username?: string | undefined;
   platform: string;
   fingerprint: string;
-  explicitSellerType?: 'agency' | 'agent' | 'owner' | 'unknown';
+  explicitSellerType?: 'agency' | 'agent' | 'owner' | 'unknown' | undefined;
 }
 
 export interface ConnectorResult {

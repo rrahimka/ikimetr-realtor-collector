@@ -9,6 +9,7 @@ import {
   toWhatsAppDirectLink,
   type CanonicalContactExportRow,
 } from './export';
+import type { LeadRecord } from '@ikimetr/core';
 
 describe('Permanent Export Center', () => {
   const sampleContacts: CanonicalContactExportRow[] = [
@@ -128,7 +129,7 @@ describe('Permanent Export Center', () => {
       expect(buffer.length).toBeGreaterThan(1000);
 
       const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(new Uint8Array(buffer).buffer as ArrayBuffer);
+      await wb.xlsx.load(new Uint8Array(buffer).buffer);
       const ws = wb.getWorksheet('Realtors');
       expect(ws).toBeDefined();
 
@@ -174,6 +175,97 @@ describe('Permanent Export Center', () => {
       expect(lines.length).toBe(2); // 2 mobile contacts (fixed line 012 excluded)
       expect(lines[0]).toBe('https://wa.me/994501234567');
       expect(lines[1]).toBe('https://wa.me/994559876543');
+    });
+  });
+
+  describe('4. Lead Intelligence Exports', () => {
+    const sampleLeads: LeadRecord[] = [
+      {
+        id: 1,
+        leadType: 'buyer',
+        status: 'new',
+        sourcePlatform: 'telegram',
+        sourceSurface: 'message_text',
+        sourceUrl: 'https://t.me/baku_emlak/101',
+        username: 'buyer_almas',
+        displayName: 'Almas',
+        publicPhone: '050 222 33 44',
+        normalizedPhone: '+994502223344',
+        intentExcerpt: 'Yasamalda 3 otaqlı mənzil axtarıram',
+        city: 'Bakı',
+        district: 'Yasamal',
+        metro: 'Elmlər Akademiyası',
+        propertyType: 'apartment',
+        rooms: 3,
+        budgetMin: 180000,
+        budgetMax: 220000,
+        currency: 'AZN',
+        confidence: 0.9,
+        confidenceLevel: 'high',
+        signals: ['buyer:axtariram'],
+        isRealtorSender: false,
+        firstSeenAt: '2026-08-27T10:00:00Z',
+        lastSeenAt: '2026-08-27T10:00:00Z',
+        expiresAt: '2026-09-27T10:00:00Z',
+      },
+      {
+        id: 2,
+        leadType: 'seller',
+        status: 'qualified',
+        sourcePlatform: 'telegram',
+        sourceSurface: 'message_text',
+        sourceUrl: 'https://t.me/baku_emlak/102',
+        username: 'owner_vusal',
+        displayName: 'Vüsal',
+        publicPhone: '055 777 66 55',
+        normalizedPhone: '+994557776655',
+        intentExcerpt: 'Öz evimdir satıram, Nərimanovda 2 otaq',
+        city: 'Bakı',
+        district: 'Nərimanov',
+        propertyType: 'apartment',
+        rooms: 2,
+        budgetMin: null,
+        budgetMax: 150000,
+        currency: 'AZN',
+        confidence: 0.85,
+        confidenceLevel: 'high',
+        signals: ['seller:satiram'],
+        isRealtorSender: false,
+        firstSeenAt: '2026-08-27T11:00:00Z',
+        lastSeenAt: '2026-08-27T11:00:00Z',
+        expiresAt: '2026-09-27T11:00:00Z',
+      },
+    ];
+
+    it('generates Lead XLSX workbook with preserved Unicode and structure', async () => {
+      const { generateLeadsXlsx } = await import('./export');
+      const buffer = await generateLeadsXlsx(sampleLeads);
+      expect(buffer).toBeInstanceOf(Buffer);
+
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(new Uint8Array(buffer).buffer);
+      const ws = wb.getWorksheet('Leads');
+      expect(ws).toBeDefined();
+      expect(ws?.rowCount).toBe(3); // 1 header + 2 leads
+
+      const row2 = ws?.getRow(2);
+      expect(row2?.getCell(1).value).toBe('BUYER');
+      expect(row2?.getCell(2).value).toBe('@buyer_almas');
+      expect(row2?.getCell(3).value).toBe('+994502223344');
+      expect(row2?.getCell(4).value).toBe('https://wa.me/994502223344');
+      expect(row2?.getCell(8).value).toBe('Yasamal');
+      expect(row2?.getCell(11).value).toBe(3);
+    });
+
+    it('generates Lead CSV with UTF-8 BOM and correct headers', async () => {
+      const { generateLeadsCsv } = await import('./export');
+      const csv = generateLeadsCsv(sampleLeads);
+      expect(csv.startsWith('\uFEFF')).toBe(true);
+      expect(csv).toContain('"buyer"');
+      expect(csv).toContain('"buyer_almas"');
+      expect(csv).toContain('"seller"');
+      expect(csv).toContain('"owner_vusal"');
+      expect(csv).toContain('https://wa.me/994502223344');
     });
   });
 });

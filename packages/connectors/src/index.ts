@@ -16,6 +16,7 @@ export * from './social-scale';
 export * from './stop';
 export * from './tap';
 export * from './telegram';
+export * from './telegram-authorized';
 export * from './tiktok';
 export * from './types';
 export * from './unvan';
