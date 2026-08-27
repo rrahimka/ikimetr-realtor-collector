@@ -10,11 +10,15 @@
     "./bina": "./src/bina.ts",
     "./city": "./src/city.ts",
     "./emlakbazari": "./src/emlakbazari.ts",
+    "./ev10": "./src/ev10.ts",
     "./google-maps-csv": "./src/google-maps-csv.ts",
     "./ipoteka": "./src/ipoteka.ts",
+    "./lalafo": "./src/lalafo.ts",
     "./stop": "./src/stop.ts",
     "./tap": "./src/tap.ts",
     "./types": "./src/types.ts",
+    "./unvan": "./src/unvan.ts",
+    "./vipemlak": "./src/vipemlak.ts",
     "./yeniemlak": "./src/yeniemlak.ts"
   },
   "scripts": {

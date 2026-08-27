@@ -3,9 +3,13 @@ import {
   crawlArendaAz,
   crawlCityAz,
   crawlEmlakBazariAz,
+  crawlEv10Az,
   crawlIpotekaAz,
+  crawlLalafoAz,
   crawlStopAz,
   crawlTapAz,
+  crawlUnvanAz,
+  crawlVipEmlakAz,
   crawlWebsite,
   crawlYeniEmlakAz,
   runBinaAgencyConnector,
@@ -39,6 +43,10 @@ export interface ConnectorDependencies {
   crawlEmlakBazari?: typeof crawlEmlakBazariAz;
   crawlIpoteka?: typeof crawlIpotekaAz;
   crawlCity?: typeof crawlCityAz;
+  crawlVipEmlak?: typeof crawlVipEmlakAz;
+  crawlEv10?: typeof crawlEv10Az;
+  crawlLalafo?: typeof crawlLalafoAz;
+  crawlUnvan?: typeof crawlUnvanAz;
 }
 
 function permissionDisabledResult(): BinaConnectorResult {
@@ -58,6 +66,10 @@ export function createConnectorRunner(
     crawlEmlakBazari: crawlEmlakBazariAz,
     crawlIpoteka: crawlIpotekaAz,
     crawlCity: crawlCityAz,
+    crawlVipEmlak: crawlVipEmlakAz,
+    crawlEv10: crawlEv10Az,
+    crawlLalafo: crawlLalafoAz,
+    crawlUnvan: crawlUnvanAz,
   },
 ) {
   return async (source: Source, context: ConnectorContext = { shouldStop: () => false }): Promise<ConnectorResult> => {
@@ -186,6 +198,58 @@ export function createConnectorRunner(
       });
     }
 
+    if (source.type === 'vipemlak_az') {
+      const crawlVipEmlak = dependencies.crawlVipEmlak ?? crawlVipEmlakAz;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlVipEmlak({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 20,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
+    if (source.type === 'ev10_az') {
+      const crawlEv10 = dependencies.crawlEv10 ?? crawlEv10Az;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlEv10({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 20,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
+    if (source.type === 'lalafo_az') {
+      const crawlLalafo = dependencies.crawlLalafo ?? crawlLalafoAz;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlLalafo({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 20,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
+    if (source.type === 'unvan_az') {
+      const crawlUnvan = dependencies.crawlUnvan ?? crawlUnvanAz;
+      const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+      return crawlUnvan({
+        startUrl,
+        maxPages: source.maxPages > 0 ? source.maxPages : 20,
+        maxDepth: source.maxDepth,
+        delayMs: source.delayMs,
+        shouldStop: context.shouldStop,
+        ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+      });
+    }
+
     if (source.type === 'stop_az') {
       const crawlStop = dependencies.crawlStop ?? crawlStopAz;
       const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
@@ -266,6 +330,54 @@ export function createConnectorRunner(
         const crawlCity = dependencies.crawlCity ?? crawlCityAz;
         const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
         return crawlCity({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 20,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'vipemlak_az') {
+        const crawlVipEmlak = dependencies.crawlVipEmlak ?? crawlVipEmlakAz;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlVipEmlak({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 20,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'ev10_az') {
+        const crawlEv10 = dependencies.crawlEv10 ?? crawlEv10Az;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlEv10({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 20,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'lalafo_az') {
+        const crawlLalafo = dependencies.crawlLalafo ?? crawlLalafoAz;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlLalafo({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 20,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'unvan_az') {
+        const crawlUnvan = dependencies.crawlUnvan ?? crawlUnvanAz;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlUnvan({
           startUrl,
           maxPages: source.maxPages > 0 ? source.maxPages : 20,
           maxDepth: source.maxDepth,

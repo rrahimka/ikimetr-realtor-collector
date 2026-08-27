@@ -197,4 +197,74 @@ describe('worker',()=>{
     expect(repos.contacts.list()).toHaveLength(1);
     expect(repos.contacts.list()[0]?.normalizedPhone).toBe('+994554813446');
   });
+
+  it('runs specialized connector for vipemlak_az, ev10_az, lalafo_az, and unvan_az', async () => {
+    db = createDatabase(':memory:');
+    const repos = createRepositories(db);
+    const runner = createConnectorRunner(
+      { ALLOW_TEST_CONNECTOR: 'false' },
+      {
+        runBina: () => Promise.resolve({ items: [], pagesChecked: 0, estimatedItems: 0, outcomes: { accepted: 0, duplicate: 0, private_seller: 0, missing_phone: 0, invalid_phone: 0, page_removed: 0, blocked: 0, parse_error: 0, cancelled: 0 } }),
+        crawlVipEmlak: () => Promise.resolve({
+          items: [{
+            sourceUrl: 'https://vipemlak.az/bineqedi-799415.html',
+            locationType: 'listing',
+            excerpt: 'VIP Realtor 0506747837',
+            rawPhone: '0506747837',
+            platform: 'vipemlak.az',
+            fingerprint: 'vip-fp-1',
+          }],
+          pagesChecked: 1,
+          estimatedItems: 1,
+        }),
+        crawlEv10: () => Promise.resolve({
+          items: [{
+            sourceUrl: 'https://ev10.az/posting/299257',
+            locationType: 'listing',
+            excerpt: 'Ev10 Agent 0709720801',
+            rawPhone: '0709720801',
+            platform: 'ev10.az',
+            fingerprint: 'ev10-fp-1',
+          }],
+          pagesChecked: 1,
+          estimatedItems: 1,
+        }),
+      }
+    );
+
+    const s1 = repos.sources.create({
+      name: 'VIP Emlak Source',
+      type: 'vipemlak_az',
+      locator: 'https://vipemlak.az/elanlar',
+      language: 'AZ',
+      maxPages: 5,
+      maxDepth: 0,
+      delayMs: 1000,
+      enabled: true,
+      killSwitch: false,
+    });
+
+    const run1 = repos.runs.enqueue(s1.id);
+    await runWorkerOnce(repos, runner);
+    expect(repos.runs.get(run1.id)?.status).toBe('completed');
+    expect(repos.contacts.list()).toHaveLength(1);
+    expect(repos.contacts.list()[0]?.normalizedPhone).toBe('+994506747837');
+
+    const s2 = repos.sources.create({
+      name: 'Ev10 Legacy',
+      type: 'website',
+      locator: 'https://ev10.az/alqi-satqi',
+      language: 'AZ',
+      maxPages: 5,
+      maxDepth: 0,
+      delayMs: 1000,
+      enabled: true,
+      killSwitch: false,
+    });
+
+    const run2 = repos.runs.enqueue(s2.id);
+    await runWorkerOnce(repos, runner);
+    expect(repos.runs.get(run2.id)?.status).toBe('completed');
+    expect(repos.contacts.list()).toHaveLength(2);
+  });
 });

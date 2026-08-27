@@ -33,6 +33,10 @@ describe('Source Registry', () => {
     expect(isSourceSupported('emlakbazari.az')).toBe(true);
     expect(isSourceSupported('ipoteka.az')).toBe(true);
     expect(isSourceSupported('city.az')).toBe(true);
+    expect(isSourceSupported('vipemlak.az')).toBe(true);
+    expect(isSourceSupported('ev10.az')).toBe(true);
+    expect(isSourceSupported('lalafo.az')).toBe(true);
+    expect(isSourceSupported('unvan.az')).toBe(true);
     expect(isSourceSupported('stop.az')).toBe(false);
     expect(isSourceSupported('emlak.az')).toBe(false);
 
@@ -43,6 +47,10 @@ describe('Source Registry', () => {
     expect(getSourceOperationalStatus('https://emlakbazari.az/properties')).toBe('SUPPORTED_VERIFIED');
     expect(getSourceOperationalStatus('https://ipoteka.az')).toBe('SUPPORTED_VERIFIED');
     expect(getSourceOperationalStatus('https://city.az')).toBe('SUPPORTED_VERIFIED');
+    expect(getSourceOperationalStatus('https://vipemlak.az/elanlar')).toBe('SUPPORTED_VERIFIED');
+    expect(getSourceOperationalStatus('https://ev10.az/alqi-satqi')).toBe('SUPPORTED_VERIFIED');
+    expect(getSourceOperationalStatus('https://lalafo.az/baku/nedvizhimost')).toBe('SUPPORTED_VERIFIED');
+    expect(getSourceOperationalStatus('https://unvan.az/dasinmaz-emlak')).toBe('SUPPORTED_VERIFIED');
     expect(getSourceOperationalStatus('https://emlak.az/')).toBe('PROTECTED');
     expect(getSourceOperationalStatus('https://stop.az/')).toBe('DEAD');
   });

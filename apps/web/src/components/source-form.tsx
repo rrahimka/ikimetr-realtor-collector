@@ -13,6 +13,10 @@ export const SOURCE_TYPE_OPTIONS = [
   { value: 'emlakbazari_az', labelKey: 'sourceType.emlakbazariAz' },
   { value: 'ipoteka_az', labelKey: 'sourceType.ipotekaAz' },
   { value: 'city_az', labelKey: 'sourceType.cityAz' },
+  { value: 'vipemlak_az', labelKey: 'sourceType.vipemlakAz' },
+  { value: 'ev10_az', labelKey: 'sourceType.ev10Az' },
+  { value: 'lalafo_az', labelKey: 'sourceType.lalafoAz' },
+  { value: 'unvan_az', labelKey: 'sourceType.unvanAz' },
   { value: 'google_maps_query', labelKey: 'sourceType.googleMaps' },
   { value: 'instagram_profile', labelKey: 'sourceType.instagramProfile' },
   { value: 'tiktok_profile', labelKey: 'sourceType.tiktokProfile' },
@@ -35,6 +39,10 @@ function detectClientSourceType(input: string): SourceType | undefined {
     if (host === 'emlakbazari.az') return 'emlakbazari_az';
     if (host === 'ipoteka.az') return 'ipoteka_az';
     if (host === 'city.az') return 'city_az';
+    if (host === 'vipemlak.az') return 'vipemlak_az';
+    if (host === 'ev10.az') return 'ev10_az';
+    if (host === 'lalafo.az') return 'lalafo_az';
+    if (host === 'unvan.az') return 'unvan_az';
   } catch {
     // ignore
   }
@@ -52,6 +60,10 @@ export function getSourceFormDefaults(type: string): FormDefaults {
     type === 'emlakbazari_az' ||
     type === 'ipoteka_az' ||
     type === 'city_az' ||
+    type === 'vipemlak_az' ||
+    type === 'ev10_az' ||
+    type === 'lalafo_az' ||
+    type === 'unvan_az' ||
     type === 'stop_az'
   ) {
     return { maxPages: 20, maxDepth: 0, delayMs: 1_000, language: 'AZ' };

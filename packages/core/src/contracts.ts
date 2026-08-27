@@ -19,6 +19,10 @@ export const SOURCE_TYPES = [
   'emlakbazari_az',
   'ipoteka_az',
   'city_az',
+  'vipemlak_az',
+  'ev10_az',
+  'lalafo_az',
+  'unvan_az',
   'telegram_channel',
   'telegram_group',
   'test_fixture',
@@ -40,6 +44,10 @@ export function detectSourceTypeFromUrl(input: string): SourceType {
     if (host === 'emlakbazari.az') return 'emlakbazari_az';
     if (host === 'ipoteka.az') return 'ipoteka_az';
     if (host === 'city.az') return 'city_az';
+    if (host === 'vipemlak.az') return 'vipemlak_az';
+    if (host === 'ev10.az') return 'ev10_az';
+    if (host === 'lalafo.az') return 'lalafo_az';
+    if (host === 'unvan.az') return 'unvan_az';
     if (host.includes('instagram.com')) {
       if (url.pathname.includes('/p/') || url.pathname.includes('/reel/')) return 'instagram_post';
       if (url.pathname.includes('/explore/tags/')) return 'instagram_hashtag';

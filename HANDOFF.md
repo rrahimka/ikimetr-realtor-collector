@@ -1,10 +1,10 @@
-# Handoff — Phase 2 Mass Source Expansion & Production Verification Checkpoint
+# Handoff — Phase 2 & 3 Mass Source Expansion & Production Verification Checkpoint
 
 ## Repository state
 
 - Branch: `feature/bina-agency-pilot`
 - Verification suite (all exit 0):
-  - `pnpm test` — **292/292 tests pass across 29 test suites**
+  - `pnpm test` — **321/321 tests pass across 33 test suites**
   - `pnpm typecheck` — clean (5 of 5 workspace packages)
   - `pnpm lint` — clean (0 errors, 0 warnings)
   - `pnpm build` — clean Next.js 16.3 app + worker builds
@@ -13,7 +13,7 @@
 
 ---
 
-## Azerbaijan Portal Coverage & Release Matrix
+## Azerbaijan Portal Coverage & Release Matrix (24 Sources)
 
 | Domain | Status | Connector | Discovery Method | Phone Extraction | Seller Classification |
 |---|---|---|---|---|---|
@@ -24,16 +24,16 @@
 | `emlakbazari.az` | `SUPPORTED_VERIFIED` | `emlakbazari_az` | Cheerio HTTP | `a[href^="tel:"]` (hotline filter `+994508395158`) | `.property-author__position`, `.agency-badge` vs `Mülkiyyətçi` skip |
 | `ipoteka.az` | `SUPPORTED_VERIFIED` | `ipoteka_az` | Cheerio HTTP | Contact block text regex + tel links | `( Vasitəçi )`, `( Agentlik )` vs `( Mülkiyyətçi )` skip |
 | `city.az` | `SUPPORTED_VERIFIED` | `city_az` | Cheerio HTTP | `a[href^="tel:"]` (hotline filter `+994502544544`) | Item author block vs `Mülkiyyətçi` skip |
-| `vipemlak.az` | `CANDIDATE` | — | HTTP inspection | Dynamic AJAX reveal requires session CSRF token | Documented candidate |
-| `ev10.az` | `CANDIDATE` | — | HTTP inspection | React client-side rendered DOM | Documented candidate |
+| `vipemlak.az` | `SUPPORTED_VERIFIED` | `vipemlak_az` | Cheerio HTTP | Session-preserved AJAX reveal (`/ajax.php?act=telshow`) | `(Bütün Elanları)`, `Vasitəçi`, `Agentlik` vs `Sahibi` skip |
+| `ev10.az` | `SUPPORTED_VERIFIED` | `ev10_az` | REST API | Official backend REST API (`/api/v1/postings/<id>`) | `is_agent: boolean` + description check, hotline filter (`+994554312159`) |
+| `lalafo.az` | `SUPPORTED_VERIFIED` | `lalafo_az` | Cheerio HTTP (Next.js) | Structured `detail` query mobile phone in `#__NEXT_DATA__` | `Təklifin növü` (`Vasitəçi`/`Agentlik`), `user.pro`, `user.business` vs `Mülkiyyətçi` skip |
+| `unvan.az` | `SUPPORTED_VERIFIED` | `unvan_az` | Cheerio HTTP | Session-preserved AJAX reveal (`/ajax.php?act=telshow`) | `(Bütün Elanları)`, `Vasitəçi`, `Agentlik` vs `Sahibi` skip; real estate category filter |
 | `kub.az` | `PROTECTED` | — | — | Cloudflare challenge protection | Protected |
 | `mertebe.az` | `PROTECTED` | — | — | Cloudflare challenge protection | Protected |
 | `emlak.az` | `PROTECTED` | — | — | Cloudflare HTTP 403 protection | Protected |
 | `evler.az` | `PROTECTED` | — | — | HTTP 403 protection | Protected |
 | `binalar.az` | `AGGREGATOR` | — | — | Aggregator re-publishing listings | Aggregator |
 | `binatap.az` | `AGGREGATOR` | — | — | Aggregator re-publishing listings | Aggregator |
-| `lalafo.az` | `CANDIDATE` | — | — | General classifieds portal | Candidate |
-| `unvan.az` | `CANDIDATE` | — | — | General classifieds portal | Candidate |
 | `stop.az` | `DEAD` | `stop_az` | — | Domain unreachable / offline | Dead domain handler |
 | `ucuzemlak.az` | `DEAD` | — | — | Domain offline / DNS failure | Dead |
 | `menzil.az` | `DEAD` | — | — | Repurposed to website builder | Dead |
@@ -44,26 +44,25 @@
 
 ---
 
-## Key Improvements Added in Phase 2
+## Key Improvements Added
 
-1. **4 New Specialized Production Connectors**:
-   - `packages/connectors/src/yeniemlak.ts` + `yeniemlak.test.ts`
-   - `packages/connectors/src/emlakbazari.ts` + `emlakbazari.test.ts`
-   - `packages/connectors/src/ipoteka.ts` + `ipoteka.test.ts`
-   - `packages/connectors/src/city.ts` + `city.test.ts`
+1. **4 Priority Connectors Added (`VIPemlak`, `Ev10`, `Lalafo`, `Unvan`)**:
+   - `packages/connectors/src/vipemlak.ts` + `vipemlak.test.ts` (Cheerio HTTP with AJAX phone reveal)
+   - `packages/connectors/src/ev10.ts` + `ev10.test.ts` (REST API with explicit `is_agent` field)
+   - `packages/connectors/src/lalafo.ts` + `lalafo.test.ts` (Next.js query data extraction with strict pro/agency filter)
+   - `packages/connectors/src/unvan.ts` + `unvan.test.ts` (Cheerio HTTP with AJAX phone reveal and real estate category verification)
 
-2. **Core Contracts & Source Types Expansion**:
-   - Updated `packages/core/src/contracts.ts` with `'yeniemlak_az' | 'emlakbazari_az' | 'ipoteka_az' | 'city_az'`.
-   - Updated `detectSourceTypeFromUrl` to recognize `yeniemlak.az`, `emlakbazari.az`, `ipoteka.az`, and `city.az`.
-   - Updated canonical source registry in `packages/core/src/source-registry.ts` and `source-registry.test.ts`.
+2. **Core Contracts & Source Registry Expansion**:
+   - Added `'vipemlak_az' | 'ev10_az' | 'lalafo_az' | 'unvan_az'` to `SOURCE_TYPES` in `packages/core/src/contracts.ts` and `detectSourceTypeFromUrl`.
+   - Updated `packages/core/src/source-registry.ts` and `source-registry.test.ts` (11 `SUPPORTED_VERIFIED`, 4 `PROTECTED`, 2 `AGGREGATOR`, 7 `DEAD`).
 
 3. **Worker Runner & Legacy Source Auto-Routing**:
-   - Updated `apps/worker/src/connectors.ts` to dispatch all 7 verified connectors (`bina_agency`, `tap_az`, `arenda_az`, `yeniemlak_az`, `emlakbazari_az`, `ipoteka_az`, `city_az`).
-   - Extended auto-routing to automatically route any legacy `website` or `listing_page` source matching any of these domains to its dedicated connector.
-   - Added full worker test coverage in `apps/worker/src/worker.test.ts`.
+   - Updated `apps/worker/src/connectors.ts` to dispatch all 11 verified connectors.
+   - Added legacy source auto-routing for `vipemlak.az`, `ev10.az`, `lalafo.az`, and `unvan.az`.
+   - Full worker test coverage in `apps/worker/src/worker.test.ts`.
 
 4. **Database Migration & Client Integrity**:
-   - Added Drizzle migration `packages/database/drizzle/0005_expand_source_types.sql` (`user_version = 5`).
+   - Added Drizzle migration `packages/database/drizzle/0006_expand_tier_b_sources.sql` (`user_version = 6`).
    - Updated `packages/database/src/client.ts` and `client.test.ts`.
 
 5. **Web UI & Localization**:
