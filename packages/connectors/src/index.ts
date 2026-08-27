@@ -6,6 +6,7 @@ export * from './bina-sitemap';
 export * from './city';
 export * from './emlakbazari';
 export * from './ev10';
+export * from './facebook';
 export * from './generic-website';
 export * from './google-maps-csv';
 export * from './instagram';

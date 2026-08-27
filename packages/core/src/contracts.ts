@@ -25,6 +25,7 @@ export const SOURCE_TYPES = [
   'unvan_az',
   'telegram_channel',
   'telegram_group',
+  'facebook_page',
   'test_fixture',
 ] as const;
 
@@ -57,6 +58,9 @@ export function detectSourceTypeFromUrl(input: string): SourceType {
       if (url.pathname.includes('/video/')) return 'tiktok_video';
       if (url.pathname.includes('/tag/')) return 'tiktok_hashtag';
       return 'tiktok_profile';
+    }
+    if (host.includes('facebook.com') || host.includes('fb.com') || host.includes('fb.me')) {
+      return 'facebook_page';
     }
     if (host.includes('google.com') && url.pathname.includes('/maps')) return 'google_maps_query';
   } catch {

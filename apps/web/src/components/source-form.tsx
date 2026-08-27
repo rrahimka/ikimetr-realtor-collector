@@ -22,6 +22,7 @@ export const SOURCE_TYPE_OPTIONS = [
   { value: 'tiktok_profile', labelKey: 'sourceType.tiktokProfile' },
   { value: 'telegram_channel', labelKey: 'sourceType.telegramChannel' },
   { value: 'telegram_group', labelKey: 'sourceType.telegramGroup' },
+  { value: 'facebook_page', labelKey: 'sourceType.facebookPage' },
   { value: 'website', labelKey: 'sourceType.website' },
   { value: 'listing_page', labelKey: 'sourceType.listingPage' },
 ] as const;
@@ -51,6 +52,7 @@ function detectClientSourceType(input: string): SourceType | undefined {
     if (host.includes('instagram.com')) return 'instagram_profile';
     if (host.includes('tiktok.com')) return 'tiktok_profile';
     if (host.includes('t.me') || host.includes('telegram.me')) return 'telegram_channel';
+    if (host.includes('facebook.com') || host.includes('fb.com') || host.includes('fb.me')) return 'facebook_page';
   } catch {
     // ignore
   }
@@ -76,7 +78,13 @@ export function getSourceFormDefaults(type: string): FormDefaults {
   ) {
     return { maxPages: 20, maxDepth: 0, delayMs: 1_000, language: 'AZ' };
   }
-  if (type === 'instagram_profile' || type === 'tiktok_profile' || type === 'telegram_channel' || type === 'telegram_group') {
+  if (
+    type === 'instagram_profile' ||
+    type === 'tiktok_profile' ||
+    type === 'telegram_channel' ||
+    type === 'telegram_group' ||
+    type === 'facebook_page'
+  ) {
     return { maxPages: 10, maxDepth: 0, delayMs: 2_000, language: 'mixed' };
   }
   return { maxPages: 10, maxDepth: 1, delayMs: 1_000, language: 'AZ' };

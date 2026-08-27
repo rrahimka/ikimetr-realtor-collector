@@ -4,6 +4,7 @@ import {
   crawlCityAz,
   crawlEmlakBazariAz,
   crawlEv10Az,
+  crawlFacebook,
   crawlInstagram,
   crawlIpotekaAz,
   crawlLalafoAz,
@@ -53,6 +54,7 @@ export interface ConnectorDependencies {
   crawlInstagram?: typeof crawlInstagram;
   crawlTikTok?: typeof crawlTikTok;
   crawlTelegram?: typeof crawlTelegram;
+  crawlFacebook?: typeof crawlFacebook;
 }
 
 function permissionDisabledResult(): BinaConnectorResult {
@@ -458,6 +460,18 @@ export function createConnectorRunner(
         const crawlTg = dependencies.crawlTelegram ?? crawlTelegram;
         const startUrl = source.locator.startsWith('http') ? source.locator : (source.locator.startsWith('@') ? `https://t.me/${source.locator.slice(1)}` : `https://${source.locator}`);
         return crawlTg({
+          startUrl,
+          maxPages: source.maxPages > 0 ? source.maxPages : 10,
+          maxDepth: source.maxDepth,
+          delayMs: source.delayMs,
+          shouldStop: context.shouldStop,
+          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
+        });
+      }
+      if (detected === 'facebook_page' || (source.type as string) === 'facebook_page') {
+        const crawlFb = dependencies.crawlFacebook ?? crawlFacebook;
+        const startUrl = source.locator.startsWith('http') ? source.locator : `https://${source.locator}`;
+        return crawlFb({
           startUrl,
           maxPages: source.maxPages > 0 ? source.maxPages : 10,
           maxDepth: source.maxDepth,

@@ -35,6 +35,10 @@ const dict: Record<string, Entry> = {
   'contacts.originAz': { ru: 'Азербайджан', az: 'Azərbaycan' },
   'contacts.originForeign': { ru: 'Зарубежный', az: 'Xarici' },
   'contacts.csvExport': { ru: 'Экспортировать список', az: 'Siyahını ixrac et' },
+  'contacts.exportExcel': { ru: 'Excel (XLSX)', az: 'Excel (XLSX)' },
+  'contacts.exportCsv': { ru: 'CSV', az: 'CSV' },
+  'contacts.exportPhones': { ru: 'Номера (TXT)', az: 'Nömrələr (TXT)' },
+  'contacts.exportWhatsApp': { ru: 'WhatsApp (TXT)', az: 'WhatsApp (TXT)' },
   'contacts.colContact': { ru: 'Контакт', az: 'Əlaqə' },
   'contacts.colNumber': { ru: 'Номер', az: 'Nömrə' },
   'contacts.colClass': { ru: 'Класс', az: 'Sinif' },
@@ -92,6 +96,7 @@ const dict: Record<string, Entry> = {
   'sourceType.tiktokProfile': { ru: 'TikTok профиль', az: 'TikTok profil' },
   'sourceType.telegramChannel': { ru: 'Telegram канал', az: 'Telegram kanal' },
   'sourceType.telegramGroup': { ru: 'Telegram группа', az: 'Telegram qrup' },
+  'sourceType.facebookPage': { ru: 'Facebook страница', az: 'Facebook səhifəsi' },
 
   'sourceStatus.working': { ru: '✓ Работает', az: '✓ İşləyir' },
   'sourceStatus.running': { ru: '● Выполняется', az: '● İcra olunur' },
