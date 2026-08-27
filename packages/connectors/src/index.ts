@@ -11,6 +11,7 @@ export * from './google-maps-csv';
 export * from './instagram';
 export * from './ipoteka';
 export * from './lalafo';
+export * from './social-scale';
 export * from './stop';
 export * from './tap';
 export * from './tiktok';
