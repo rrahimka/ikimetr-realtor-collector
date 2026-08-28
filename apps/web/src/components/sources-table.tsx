@@ -11,8 +11,13 @@ import {
   getSourceCategory,
   getSourceTypeLabel,
   isSourceSupported,
+  type SocialAccountConnection,
+  type SocialPlatform,
   type SourceCategory,
+  type WhatsAppGroupData,
 } from '../lib/source-options';
+import { SocialConnectionsPanel } from './social-connections-panel';
+import { WhatsAppGroupsTable } from './whatsapp-groups-table';
 
 export interface SourceRowData {
   id: number;
@@ -47,6 +52,8 @@ export interface SourcesTableProps {
   binaStatsMap: Record<number, { totalDiscovered: number; professionalCount: number } | undefined>;
   cycleHours: number;
   continuous: boolean;
+  initialSocialAccounts?: Record<SocialPlatform, SocialAccountConnection>;
+  initialWhatsAppGroups?: WhatsAppGroupData[];
 }
 
 export function SourcesTable({
@@ -57,45 +64,20 @@ export function SourcesTable({
   binaStatsMap,
   cycleHours,
   continuous,
+  initialSocialAccounts,
+  initialWhatsAppGroups,
 }: SourcesTableProps) {
   const [filter, setFilter] = useState<'all' | SourceCategory>('all');
 
   const totalCount = sources.length;
-  const websiteCount = sources.filter((s) => getSourceCategory(s.type || s.locator) === 'website').length;
-  const socialCount = sources.filter((s) => getSourceCategory(s.type || s.locator) === 'social').length;
+  const websiteSources = sources.filter((s) => getSourceCategory(s.type || s.locator) === 'website');
+  const socialSources = sources.filter((s) => getSourceCategory(s.type || s.locator) === 'social');
 
-  const filtered = sources.filter((source) => {
-    if (filter === 'all') return true;
-    return getSourceCategory(source.type || source.locator) === filter;
-  });
+  const showWebsites = filter === 'all' || filter === 'website';
+  const showSocials = filter === 'all' || filter === 'social';
 
-  return (
-    <div>
-      {/* Category filter tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
-        <button
-          type="button"
-          className={`source-filter-btn ${filter === 'all' ? 'active' : ''}`}
-          onClick={() => setFilter('all')}
-        >
-          {t(lang, 'sources.filterAll')} ({totalCount})
-        </button>
-        <button
-          type="button"
-          className={`source-filter-btn ${filter === 'website' ? 'active' : ''}`}
-          onClick={() => setFilter('website')}
-        >
-          {t(lang, 'sources.filterWebsites')} ({websiteCount})
-        </button>
-        <button
-          type="button"
-          className={`source-filter-btn ${filter === 'social' ? 'active' : ''}`}
-          onClick={() => setFilter('social')}
-        >
-          {t(lang, 'sources.filterSocial')} ({socialCount})
-        </button>
-      </div>
-
+  const renderTable = (items: SourceRowData[], emptyMessage: string) => {
+    return (
       <div className="table-wrap">
         <table>
           <thead>
@@ -109,14 +91,14 @@ export function SourcesTable({
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {items.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
-                  Нет источников в выбранной категории
+                  {emptyMessage}
                 </td>
               </tr>
             ) : (
-              filtered.map((source) => {
+              items.map((source) => {
                 const run = latestRuns[source.id];
                 const isRunning = run && ['queued', 'running'].includes(run.status);
                 const summary = readBinaSummary(run ? summaries[run.id] : undefined);
@@ -289,6 +271,73 @@ export function SourcesTable({
           </tbody>
         </table>
       </div>
+    );
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: '24px' }}>
+      {/* Category filter tabs */}
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <button
+          type="button"
+          className={`source-filter-btn ${filter === 'all' ? 'active' : ''}`}
+          onClick={() => setFilter('all')}
+        >
+          {t(lang, 'sources.filterAll')} ({totalCount})
+        </button>
+        <button
+          type="button"
+          className={`source-filter-btn ${filter === 'website' ? 'active' : ''}`}
+          onClick={() => setFilter('website')}
+        >
+          {t(lang, 'sources.filterWebsites')} ({websiteSources.length})
+        </button>
+        <button
+          type="button"
+          className={`source-filter-btn ${filter === 'social' ? 'active' : ''}`}
+          onClick={() => setFilter('social')}
+        >
+          {t(lang, 'sources.filterSocial')} ({socialSources.length})
+        </button>
+      </div>
+
+      {/* Website Category Section */}
+      {showWebsites && (
+        <div>
+          {filter === 'all' && (
+            <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>
+              {t(lang, 'sources.categoryWebsite')}
+            </h2>
+          )}
+          {renderTable(websiteSources, 'Нет веб-сайтов в списке источников')}
+        </div>
+      )}
+
+      {/* Social Category Section */}
+      {showSocials && (
+        <div style={{ marginTop: filter === 'all' ? '12px' : '0' }}>
+          {initialSocialAccounts && (
+            <SocialConnectionsPanel
+              lang={lang}
+              initialAccounts={initialSocialAccounts}
+            />
+          )}
+
+          {initialWhatsAppGroups && (
+            <WhatsAppGroupsTable
+              lang={lang}
+              initialGroups={initialWhatsAppGroups}
+            />
+          )}
+
+          {socialSources.length > 0 && (
+            <div style={{ marginTop: '24px' }}>
+              <h3>Индивидуальные ссылки соцсетей ({socialSources.length})</h3>
+              {renderTable(socialSources, 'Нет дополнительных ссылок соцсетей')}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

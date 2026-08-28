@@ -44,21 +44,24 @@ a {
 }
 
 .shell {
-  display: grid;
-  grid-template-columns: 240px 1fr;
+  display: flex;
   min-height: 100vh;
 }
 
 .sidebar {
-  position: sticky;
+  width: 240px;
+  flex-shrink: 0;
+  position: fixed;
+  left: 0;
   top: 0;
+  bottom: 0;
   height: 100vh;
   overflow-y: auto;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 24px 16px 24px 16px;
+  padding: 24px 16px;
   border-right: 1px solid var(--line);
   background: var(--panel);
   z-index: 100;
@@ -124,9 +127,12 @@ nav a:hover {
 }
 
 main {
+  margin-left: 240px;
+  flex: 1;
+  min-width: 0;
   padding: 32px 40px;
   max-width: 1500px;
-  width: 100%;
+  box-sizing: border-box;
 }
 
 .eyebrow {
@@ -492,10 +498,11 @@ tbody tr:hover {
 
 @media (max-width: 850px) {
   .shell {
-    grid-template-columns: 1fr;
+    display: block;
   }
   .sidebar {
     position: static;
+    width: 100%;
     height: auto;
     overflow-y: visible;
     border-right: 0;
@@ -506,6 +513,7 @@ tbody tr:hover {
     grid-template-columns: repeat(3, 1fr);
   }
   main {
+    margin-left: 0;
     padding: 20px;
     min-width: 0;
   }

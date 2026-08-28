@@ -1,8 +1,8 @@
-import Link from 'next/link';
 import { AutoRefresh } from '../../components/auto-refresh';
 import { SourceForm } from '../../components/source-form';
 import { SourcesTable, type RunRowData, type SourceRowData } from '../../components/sources-table';
 import { isContinuousBinaMode, readBinaCycleHours } from '../../lib/bina-view';
+import { getConnectionsStore } from '../../lib/connections-store';
 import { getRepositories } from '../../lib/db';
 import { getLang } from '../../lib/lang';
 import { t } from '../../lib/i18n';
@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 export default async function Sources() {
   const lang = await getLang();
   const repos = getRepositories();
+  const connectionsStore = getConnectionsStore();
   const cycleHours = readBinaCycleHours(process.env.BINA_CYCLE_HOURS);
   const continuous = isContinuousBinaMode(process.env);
   const rows = repos.sources.list();
@@ -77,28 +78,6 @@ export default async function Sources() {
       <p className="eyebrow">{t(lang, 'sources.eyebrow')}</p>
       <h1>{t(lang, 'sources.title')}</h1>
       <div className="stack">
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '14px 18px',
-            backgroundColor: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: '10px',
-            boxShadow: 'var(--card-shadow)',
-          }}
-        >
-          <div>
-            <strong>{t(lang, 'connections.socialNetworks')} & WhatsApp</strong>
-            <div className="muted" style={{ fontSize: '12px', marginTop: '2px' }}>
-              Подключение аккаунтов, выбор режимов поиска и авторизация групп WhatsApp.
-            </div>
-          </div>
-          <Link href="/connections" className="button secondary">
-            {t(lang, 'connections.title')} →
-          </Link>
-        </div>
         <SourceForm lang={lang} />
         <SourcesTable
           lang={lang}
@@ -108,6 +87,8 @@ export default async function Sources() {
           binaStatsMap={binaStatsMap}
           cycleHours={cycleHours}
           continuous={continuous}
+          initialSocialAccounts={connectionsStore.accounts}
+          initialWhatsAppGroups={connectionsStore.whatsappGroups}
         />
       </div>
     </>
