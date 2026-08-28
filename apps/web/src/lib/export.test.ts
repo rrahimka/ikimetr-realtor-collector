@@ -136,7 +136,7 @@ describe('Permanent Export Center', () => {
       // Header row
       expect(ws?.getRow(1).getCell(1).value).toBe('Phone');
       expect(ws?.getRow(1).getCell(3).value).toBe('Agency');
-      expect(ws?.getRow(1).getCell(13).value).toBe('WhatsApp Direct Link');
+      expect(ws?.getRow(1).getCell(16).value).toBe('WhatsApp Direct Link');
 
       // Row count (1 header + 3 eligible contacts = 4 rows)
       expect(ws?.rowCount).toBe(4);
@@ -146,14 +146,14 @@ describe('Permanent Export Center', () => {
       expect(row2?.getCell(1).value).toBe('+994501234567');
       expect(row2?.getCell(2).value).toBe('Rəşad Əliyev'); // Azerbaijani Unicode
       expect(row2?.getCell(3).value).toBe('EVA Group Əmlak Mərkəzi');
-      expect(row2?.getCell(7).value).toBe('@eva_group_official');
-      expect(row2?.getCell(8).value).toBe('@eva_group_baku');
-      expect(row2?.getCell(13).value).toBe('https://wa.me/994501234567');
+      expect(row2?.getCell(9).value).toBe('@eva_group_official');
+      expect(row2?.getCell(10).value).toBe('@eva_group_baku');
+      expect(row2?.getCell(16).value).toBe('https://wa.me/994501234567');
 
       // Fixed line office check (Row 4) - no WhatsApp URL
       const row4 = ws?.getRow(4);
       expect(row4?.getCell(1).value).toBe('+994124900000');
-      expect(row4?.getCell(13).value || '').toBe('');
+      expect(row4?.getCell(16).value || '').toBe('');
     });
   });
 

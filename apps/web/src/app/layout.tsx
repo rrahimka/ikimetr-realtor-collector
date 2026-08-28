@@ -24,11 +24,14 @@ const nav = [
   ['/review', 'nav.review'],
 ] as const;
 
+import { getRepositories } from '../lib/db';
+
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const lang = await getLang();
   const jar = await cookies();
   const sessionCookie = jar.get('collector_session')?.value;
   const isAuthenticated = verifySessionToken(sessionCookie, process.env.SESSION_SECRET ?? '');
+  const pendingReviewCount = isAuthenticated ? getRepositories().reviews.pendingCount() : 0;
 
   return (
     <html lang={lang}>
@@ -45,6 +48,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
                 {nav.map(([href, key]) => (
                   <Link key={href} href={href}>
                     {t(lang, key)}
+                    {key === 'nav.review' && pendingReviewCount > 0 ? ` (${pendingReviewCount})` : ''}
                   </Link>
                 ))}
               </nav>

@@ -243,6 +243,7 @@ export function scanWhatsAppAuthorizedGroup(
             fingerprint,
             name: msg.senderDisplayName || undefined,
             explicitSellerType: 'agency',
+            whatsappContext: { approved: group.authorized, realtorOnly: group.isRealtorOnlyGroup },
           });
         }
       }
@@ -276,6 +277,7 @@ export function scanWhatsAppAuthorizedGroup(
           fingerprint,
           name: participant.displayName || undefined,
           explicitSellerType: 'agency',
+          whatsappContext: { approved: group.authorized, realtorOnly: group.isRealtorOnlyGroup },
         });
       }
     }

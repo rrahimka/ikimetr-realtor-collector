@@ -1,6 +1,6 @@
 import { integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-export const sources = sqliteTable('sources', { id: integer('id').primaryKey({ autoIncrement: true }), name: text('name').notNull(), type: text('type').notNull(), locator: text('locator').notNull(), language: text('language').notNull(), maxPages: integer('max_pages').notNull(), maxDepth: integer('max_depth').notNull(), delayMs: integer('delay_ms').notNull(), enabled: integer('enabled', { mode: 'boolean' }).notNull(), killSwitch: integer('kill_switch', { mode: 'boolean' }).notNull(), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull() });
+export const sources = sqliteTable('sources', { id: integer('id').primaryKey({ autoIncrement: true }), name: text('name').notNull(), type: text('type').notNull(), locator: text('locator').notNull(), language: text('language').notNull(), maxPages: integer('max_pages').notNull(), maxDepth: integer('max_depth').notNull(), delayMs: integer('delay_ms').notNull(), enabled: integer('enabled', { mode: 'boolean' }).notNull(), killSwitch: integer('kill_switch', { mode: 'boolean' }).notNull(), deletedAt: text('deleted_at'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull() });
 
 export const keywords = sqliteTable('keywords', { id: integer('id').primaryKey({ autoIncrement: true }), value: text('value').notNull().unique(), language: text('language').notNull(), createdAt: text('created_at').notNull() });
 

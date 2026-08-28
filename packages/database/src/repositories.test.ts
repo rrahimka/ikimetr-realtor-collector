@@ -33,7 +33,7 @@ describe('repositories', () => {
   it('preserves a manual verified status while adding evidence from another listing', () => {
     const repos = setup(); const saved = repos.sources.create(source);
     const classification = { type: 'agent' as const, confidence: 0.8, reasons: ['professional_keywords'], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-25T00:00:00.000Z' };
-    const first = repos.contacts.persistEvidence({ normalizedPhone: '+994501234567', isForeign: false, evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/a', locationType: 'listing', excerpt: 'Agent', rawPhone: '0501234567', platform: 'bina.az', fingerprint: 'verified-evidence-01' }, classification });
+    const first = repos.contacts.persistEvidence({ normalizedPhone: '+994501234567', isForeign: false, evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/a', locationType: 'listing', excerpt: 'Agent', rawPhone: '0501234567', platform: 'bina.az', fingerprint: 'verified-evidence-01' }, classification })!;
     repos.reviews.setStatus(first.id, 'verified');
     repos.contacts.persistEvidence({ normalizedPhone: '+994501234567', isForeign: false, evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/b', locationType: 'listing', excerpt: 'Agentlik', rawPhone: '+994501234567', platform: 'bina.az', fingerprint: 'verified-evidence-02' }, classification });
 
@@ -109,8 +109,8 @@ describe('repositories', () => {
   it('filters contacts by type, platform, verification status and origin', () => {
     const repos = setup(); const saved = repos.sources.create(source);
     const seed = (phone: string, type: 'agent' | 'unknown', platform: string, isForeign: boolean) => repos.contacts.persistEvidence({ normalizedPhone: phone, isForeign, evidence: { sourceId: saved.id, sourceUrl: `https://example.com/${phone}`, locationType: 'listing', excerpt: phone, rawPhone: phone, platform, fingerprint: `filter-${phone}` }, classification: { type, confidence: 0.8, reasons: [], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-12T00:00:00.000Z' } });
-    const a = seed('+994501111111', 'agent', 'website', false);
-    const b = seed('+994502222222', 'unknown', 'google-maps', false);
+    const a = seed('+994501111111', 'agent', 'website', false)!;
+    const b = seed('+994502222222', 'unknown', 'google-maps', false)!;
     seed('+79161111111', 'agent', 'website', true);
     repos.reviews.setStatus(a.id, 'verified');
     repos.reviews.setStatus(b.id, 'rejected');
@@ -247,7 +247,7 @@ describe('repositories', () => {
       classification,
     });
     // Manually set old contact firstSeenAt to 2026-08-01
-    db!.prepare('UPDATE contacts SET first_seen_at=? WHERE id=?').run('2026-08-01T00:00:00.000Z', oldContact.id);
+    db!.prepare('UPDATE contacts SET first_seen_at=? WHERE id=?').run('2026-08-01T00:00:00.000Z', oldContact!.id);
 
     // 2. Create a new contact today
     repos.contacts.persistEvidence({
@@ -292,5 +292,103 @@ describe('repositories', () => {
     expect(dashStats.successfulRunsToday).toBe(1);
     expect(dashStats.failedRunsToday).toBe(0);
     expect(dashStats.bakuDateIso).toContain('T');
+  });
+
+  it('soft-deletes a source while preserving contacts, evidence, and historical runs', () => {
+    const repos = setup();
+    const saved = repos.sources.create(source);
+    const run = repos.runs.enqueue(saved.id);
+    repos.runs.claimNext();
+    repos.runs.finish(run.id, 'completed', { pagesChecked: 2, phonesFound: 1, uniquePhones: 1 });
+
+    const classification = { type: 'agent' as const, confidence: 0.95, autoAccept: true, reasons: ['agency_name'], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-25T00:00:00.000Z' };
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994501234567',
+      isForeign: false,
+      evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/item1', locationType: 'listing', excerpt: 'Agent', rawPhone: '0501234567', platform: 'website', fingerprint: 'fp-delete-test' },
+      classification,
+    });
+
+    expect(repos.sources.list().some((s) => s.id === saved.id)).toBe(true);
+    expect(repos.contacts.list()).toHaveLength(1);
+    expect(repos.evidence.wasUrlSeenSince(saved.id, 'https://example.com/item1', '2020-01-01T00:00:00.000Z')).toBe(true);
+
+    // Delete source
+    const removed = repos.sources.remove(saved.id);
+    expect(removed).toBe(true);
+
+    // Source is hidden from active list
+    expect(repos.sources.list().some((s) => s.id === saved.id)).toBe(false);
+
+    // Contacts and evidence are preserved!
+    expect(repos.contacts.list()).toHaveLength(1);
+    expect(repos.contacts.evidenceFor('+994501234567')).toHaveLength(1);
+    expect(repos.runs.get(run.id)).toBeDefined();
+  });
+
+  it('never enqueues or claims work for a soft-deleted source', () => {
+    const repos = setup();
+    const saved = repos.sources.create(source);
+    const queued = repos.runs.enqueue(saved.id);
+
+    expect(repos.sources.remove(saved.id)).toBe(true);
+    expect(() => repos.runs.enqueue(saved.id)).toThrow('source is deleted');
+    expect(repos.runs.claimNext()).toBeUndefined();
+    expect(repos.runs.get(queued.id)).toMatchObject({ status: 'cancelled' });
+  });
+
+  it('tracks origin groups and provides origin counts for websites, social, whatsapp, and review', () => {
+    const repos = setup();
+    const savedWeb = repos.sources.create({ ...source, type: 'bina_agency' });
+    const savedSocial = repos.sources.create({ ...source, name: 'Instagram', type: 'instagram_profile', locator: 'https://instagram.com/baku' });
+    const savedWA = repos.sources.create({ ...source, name: 'WhatsApp Group', type: 'telegram_group', locator: 'https://chat.whatsapp.com/123' });
+
+    // 1. Website auto-accepted contact
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994501111111',
+      isForeign: false,
+      evidence: { sourceId: savedWeb.id, sourceUrl: 'https://bina.az/items/1', locationType: 'listing', excerpt: 'Bina Agency', rawPhone: '0501111111', platform: 'website', fingerprint: 'fp-w1' },
+      classification: { type: 'agency', confidence: 0.95, autoAccept: true, reasons: ['agency_name'], ruleVersion: '1.0.0', classifiedAt: '2026-08-25T00:00:00.000Z' },
+    });
+
+    // 2. Social unreviewed candidate
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994502222222',
+      isForeign: false,
+      evidence: { sourceId: savedSocial.id, sourceUrl: 'https://instagram.com/p/123', locationType: 'profile', excerpt: 'Insta agent', rawPhone: '0502222222', platform: 'instagram', fingerprint: 'fp-s1' },
+      classification: { type: 'agent', confidence: 0.75, autoAccept: false, reasons: ['professional_keywords'], ruleVersion: '1.0.0', classifiedAt: '2026-08-25T00:00:00.000Z' },
+    });
+
+    // 3. WhatsApp contact
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994503333333',
+      isForeign: false,
+      evidence: { sourceId: savedWA.id, sourceUrl: 'https://chat.whatsapp.com/123', locationType: 'post', excerpt: 'WA broker', rawPhone: '0503333333', platform: 'whatsapp', fingerprint: 'fp-wa1' },
+      classification: { type: 'agent', confidence: 0.92, autoAccept: true, reasons: ['whatsapp_realtor_group'], ruleVersion: '1.0.0', classifiedAt: '2026-08-25T00:00:00.000Z' },
+    });
+
+    const counts = repos.contacts.originCounts();
+    expect(counts.total).toBe(3);
+    expect(counts.website).toBe(1);
+    expect(counts.social).toBe(1);
+    expect(counts.whatsapp).toBe(1);
+    expect(counts.unreviewed).toBe(1);
+
+    const pending = repos.reviews.listPending();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.normalizedPhone).toBe('+994502222222');
+    expect(pending[0]?.primaryOrigin).toBe('social');
+  });
+
+  it('keeps a website candidate at 78% in the review queue', () => {
+    const repos = setup();
+    const saved = repos.sources.create(source);
+    const contact = repos.contacts.persistEvidence({
+      normalizedPhone: '+994501234567',
+      isForeign: false,
+      evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/78', locationType: 'listing', excerpt: 'Əmlakçı', rawPhone: '+994501234567', platform: 'website', fingerprint: 'website-confidence-78' },
+      classification: { type: 'agent', confidence: 0.78, autoAccept: false, reasons: ['professional_keywords'], ruleVersion: '1.0.0', classifiedAt: '2026-08-28T00:00:00.000Z' },
+    });
+    expect(contact).toMatchObject({ confidence: 0.78, verificationStatus: 'unreviewed' });
   });
 });

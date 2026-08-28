@@ -16,6 +16,17 @@ describe('csv', () => {
     expect(csv).toContain("'=A");
   });
 
+  it('exports one canonical row per phone with compatible policy fields', () => {
+    const csv = contactsCsv([
+      { normalizedPhone: '+994501234567', type: 'agent', confidence: 0.96, verificationStatus: 'verified', originGroups: ['website'] },
+      { normalizedPhone: '+994501234567', type: 'agent', confidence: 0.96, verificationStatus: 'verified', originGroups: ['website', 'social'] },
+    ]);
+    const rows = parseCsv(csv.replace(/^\uFEFF/, ''));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual(expect.arrayContaining(['professional_type', 'confidence', 'verification_status', 'origin_groups']));
+    expect(rows[1]).toEqual(expect.arrayContaining(['REALTOR', '96', 'verified', 'website; social']));
+  });
+
   it('parses quoted fields with commas and newlines', () => {
     const rows = parseCsv('a,b\n"x,y",z\n');
     expect(rows).toEqual([['a', 'b'], ['x,y', 'z']]);

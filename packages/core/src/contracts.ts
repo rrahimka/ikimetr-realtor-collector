@@ -131,7 +131,23 @@ export type EvidenceInput = z.infer<typeof evidenceSchema>;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 export type ContactType = 'agent' | 'agency' | 'owner' | 'unknown' | 'suspicious';
 export type ExplicitSellerType = 'agency' | 'agent' | 'owner' | 'unknown';
-export interface Classification { type: ContactType; confidence: number; reasons: string[]; ruleVersion: '1.0.0'; classifiedAt: string }
+export interface SignalBreakdown {
+  key: string;
+  points: number;
+  label: string;
+}
+
+export interface Classification {
+  type: ContactType;
+  confidence: number;
+  reasons: string[];
+  signals?: SignalBreakdown[];
+  ruleVersion: string;
+  classifiedAt: string;
+  autoAccept?: boolean | undefined;
+  autoAccepted?: boolean | undefined;
+  autoAcceptPolicy?: string | undefined;
+}
 
 export const LEAD_TYPES = [
   'buyer',

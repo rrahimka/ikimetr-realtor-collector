@@ -12,6 +12,7 @@ export interface ConnectorEvidence {
   platform: string;
   fingerprint: string;
   explicitSellerType?: 'agency' | 'agent' | 'owner' | 'unknown' | undefined;
+  whatsappContext?: { approved: boolean; realtorOnly: boolean } | undefined;
 }
 
 export interface ConnectorResult {

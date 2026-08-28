@@ -12,6 +12,7 @@ const fixSourceTypesMigrationPath = resolve(packageRoot, 'drizzle/0004_fix_sourc
 const expandSourceTypesMigrationPath = resolve(packageRoot, 'drizzle/0005_expand_source_types.sql');
 const expandTierBSourcesMigrationPath = resolve(packageRoot, 'drizzle/0006_expand_tier_b_sources.sql');
 const leadsMigrationPath = resolve(packageRoot, 'drizzle/0007_leads.sql');
+const sourceSoftDeleteMigrationPath = resolve(packageRoot, 'drizzle/0008_source_soft_delete.sql');
 
 export type CollectorDatabase = Database.Database;
 export const DEFAULT_DATABASE_PATH = './data/collector.db';
@@ -57,6 +58,10 @@ export function createDatabase(path = process.env.DATABASE_URL ?? DEFAULT_DATABA
     }
     if (version < 7) {
       db.exec(readFileSync(leadsMigrationPath, 'utf8'));
+      version = db.pragma('user_version', { simple: true }) as number;
+    }
+    if (version < 8) {
+      db.exec(readFileSync(sourceSoftDeleteMigrationPath, 'utf8'));
     }
 
     const violations = db.pragma('foreign_key_check') as unknown[];

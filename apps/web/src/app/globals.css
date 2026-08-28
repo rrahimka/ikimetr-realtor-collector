@@ -377,6 +377,47 @@ tbody tr:hover {
   color: var(--text-muted);
 }
 
+.badge-origin-website {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.badge-origin-social {
+  background: #fdf2f8;
+  color: #be185d;
+  border-color: #fbcfe8;
+}
+
+.badge-origin-whatsapp {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modal-dialog {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  width: 100%;
+  max-width: 480px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
 .login {
   max-width: 400px;
   margin: 12vh auto;

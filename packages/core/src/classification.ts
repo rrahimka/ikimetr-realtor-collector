@@ -1,43 +1,174 @@
-import type { Classification, ContactType, ExplicitSellerType } from './contracts';
+import type { Classification, ContactType, ExplicitSellerType, SignalBreakdown } from './contracts';
+import {
+  AUTO_ACCEPT_WEBSITE_THRESHOLD,
+  WHATSAPP_REALTOR_GROUP_AUTO_ACCEPT_THRESHOLD,
+  CONFIDENCE_POLICY_VERSION,
+  AUTO_ACCEPT_WEBSITE_POLICY,
+  AUTO_ACCEPT_WHATSAPP_POLICY,
+} from './thresholds';
+import { resolveOriginGroup } from './origin';
 
-const professional = [/əmlakçı|daşınmaz əmlak|makler|mənzil satışı|kirayə/iu, /риелтор|маклер|недвижимост|продаж|аренд/iu, /real estate|realtor|property agent|house(?:s)? for sale|for rent/iu];
-const agency = /(?:\bagency\b|\bagentlik\b|əmlak agentliyi|агентств)/iu;
-const locationDeal = /(?:baku|bakı|baki).*(?:satış|kirayə|продаж|аренд|sale|rent)|(?:satış|kirayə|продаж|аренд|sale|rent).*(?:baku|bakı|baki)/iu;
-const owner = /\bowner\b|владелец|собственник|sahib|mülkiyyətçi|mulkiyyetci|şəxsi|sexsi/iu;
+const professionalRegexes = [
+  /əmlakçı|daşınmaz əmlak|makler|mənzil satışı|kirayə|vasitəçi/iu,
+  /риелтор|маклер|недвижимост|продаж|аренд/iu,
+  /real estate|realtor|property agent|house(?:s)? for sale|for rent/iu,
+];
+const agencyRegex = /(?:\bagency\b|\bagentlik\b|əmlak agentliyi|агентств)/iu;
+const locationDealRegex = /(?:baku|bakı|baki|yasamal|nəsimi|nasimi|xətai|khatai|nərimanov|nerimanov|səbail|sabail|binəqədi|bineqedi|nizami|suraxanı|suraxani|sabunçu|sabuncu|abşeron|absheron|xırdalan|khirdalan).*(?:satış|kirayə|satılır|kiraye|elan|mənzil|menzil|ev|otaq|продаж|аренд|квартир|дом|комнат|sale|rent)|(?:satış|kirayə|satılır|kiraye|elan|mənzil|menzil|ev|otaq|продаж|аренд|квартир|дом|комнат|sale|rent).*(?:baku|bakı|baki|yasamal|nəsimi|nasimi|xətai|khatai|nərimanov|nerimanov|səbail|sabail|binəqədi|bineqedi|nizami|suraxanı|suraxani|sabunçu|sabuncu|abşeron|absheron|xırdalan|khirdalan)/iu;
+const ownerRegex = /\bowner\b|владелец|собственник|sahib|mülkiyyətçi|mulkiyyetci|şəxsi|sexsi|sahibindən|öz evim|от хозяина|maklerlər narahat etməsin|vasitəçilər narahat etməsin/iu;
+const hotlineRegex = /\b(?:142|102|103|112|195|905|support|qaynar xətt|горячая линия)\b/iu;
+const platformHotlinePhones = new Set(['+994125990805']);
+const azMobileRegex = /^\+?994(?:50|51|55|70|77|99|10|60)\d{7}$/;
 
-export function classifyEvidence(input: {
+export interface ClassifyInput {
   text: string;
   occurrenceCount?: number;
   profileDedicated?: boolean;
   explicitSellerType?: ExplicitSellerType | undefined;
+  platform?: string;
+  sourceType?: string;
+  sourceUrl?: string;
+  rawPhone?: string;
+  normalizedPhone?: string;
+  isForeign?: boolean;
+  isRealtorOnlyWhatsAppGroup?: boolean;
+  alreadyVerifiedInDb?: boolean;
+}
 
-}): Classification {
+export function classifyEvidence(input: ClassifyInput): Classification {
+  const text = input.text || '';
+  const signals: SignalBreakdown[] = [];
   const reasons: string[] = [];
-  const matches = professional.filter((rule) => rule.test(input.text)).length;
-  const hasExplicit = input.explicitSellerType && input.explicitSellerType !== 'unknown';
-  if (hasExplicit) reasons.push('explicit_site_seller_type');
-  if (matches > 0) reasons.push('professional_keywords');
-  if (locationDeal.test(input.text)) reasons.push('location_and_transaction');
-  if ((input.occurrenceCount ?? 1) > 1) reasons.push('phone_repeated_across_listings');
-  if (input.profileDedicated) reasons.push('real_estate_profile');
-  if (agency.test(input.text)) reasons.push('agency_name');
 
-  let type: ContactType = 'unknown';
-  if (input.explicitSellerType === 'agency') {
-    type = 'agency';
-  } else if (input.explicitSellerType === 'agent') {
-    type = 'agent';
-  } else if (input.explicitSellerType === 'owner') {
-    type = 'owner';
-  } else {
-    // Fallback heuristic classification when explicit seller type is absent / unknown
-    if (reasons.includes('agency_name')) type = 'agency';
-    else if (matches > 0) type = 'agent';
-    else if (owner.test(input.text)) type = 'owner';
+  const origin = resolveOriginGroup(input.platform, input.sourceType, input.sourceUrl);
+  const isExplicitOwner = input.explicitSellerType === 'owner';
+  const isExplicitAgency = input.explicitSellerType === 'agency';
+  const isExplicitAgent = input.explicitSellerType === 'agent';
+  const isOwnerMention = !isExplicitAgency && !isExplicitAgent && ownerRegex.test(text);
+  const isHotline = hotlineRegex.test(text) || Boolean(input.rawPhone && hotlineRegex.test(input.rawPhone)) || Boolean(input.normalizedPhone && platformHotlinePhones.has(input.normalizedPhone));
+  const isAzMobile = input.normalizedPhone ? azMobileRegex.test(input.normalizedPhone) : !input.isForeign;
+
+  // 1. Explicit site indicators
+  if (isExplicitAgency) {
+    signals.push({ key: 'explicit_site_agency', points: 45, label: 'Сайт явно помечает продавца как агентство (+45)' });
+    reasons.push('explicit_site_agency');
+    reasons.push('explicit_site_seller_type');
+  } else if (isExplicitAgent) {
+    signals.push({ key: 'explicit_site_agent', points: 35, label: 'Сайт явно помечает продавца как риелтора (+35)' });
+    reasons.push('explicit_site_agent');
+    reasons.push('explicit_site_seller_type');
   }
 
-  const score = hasExplicit
-    ? Math.min(0.98, 0.85 + (reasons.length - 1) * 0.05)
-    : Math.min(0.98, (type === 'owner' ? 0.4 : 0.25) + reasons.length * 0.2 + matches * 0.1);
-  return { type, confidence: Number(score.toFixed(2)), reasons, ruleVersion: '1.0.0', classifiedAt: new Date().toISOString() };
+  // 2. WhatsApp Realtor-Only Group
+  if (input.isRealtorOnlyWhatsAppGroup) {
+    signals.push({ key: 'whatsapp_realtor_group', points: 35, label: 'Подтверждённая группа только для риелторов (+35)' });
+    reasons.push('whatsapp_realtor_group');
+  }
+
+  // 3. Repeat listings
+  const occurrences = input.occurrenceCount ?? 1;
+  if (occurrences > 1) {
+    const points = Math.min(25, 15 + (occurrences - 2) * 5);
+    signals.push({ key: 'phone_repeated_across_listings', points, label: `Номер повторяется в ${occurrences} объявлениях (+${points})` });
+    reasons.push('phone_repeated_across_listings');
+  }
+
+  // 4. Agency name
+  if (agencyRegex.test(text)) {
+    signals.push({ key: 'agency_name', points: 20, label: 'Название агентства в тексте (+20)' });
+    reasons.push('agency_name');
+  }
+
+  // 5. Professional keywords
+  const matchedKeywords = professionalRegexes.filter((r) => r.test(text)).length;
+  if (matchedKeywords > 0) {
+    const points = Math.min(25, 15 + matchedKeywords * 5);
+    signals.push({ key: 'professional_keywords', points, label: `Профессиональные ключевые слова (+${points})` });
+    reasons.push('professional_keywords');
+  }
+
+  // 6. Real estate profile
+  if (input.profileDedicated) {
+    signals.push({ key: 'real_estate_profile', points: 15, label: 'Профиль посвящён недвижимости (+15)' });
+    reasons.push('real_estate_profile');
+  }
+
+  // 7. Location & Transaction
+  if (locationDealRegex.test(text)) {
+    signals.push({ key: 'location_and_transaction', points: 10, label: 'Локация и сделка (+10)' });
+    reasons.push('location_and_transaction');
+  }
+
+  // 8. Local mobile phone
+  if (isAzMobile && !input.isForeign) {
+    signals.push({ key: 'azerbaijan_mobile', points: 10, label: 'Азербайджанский мобильный номер (+10)' });
+    reasons.push('azerbaijan_mobile');
+  }
+
+  // Determine Type
+  let type: ContactType = 'unknown';
+  if (isHotline) {
+    type = 'suspicious';
+    signals.push({ key: 'platform_hotline', points: -100, label: 'Служебный номер / горячая линия (-100)' });
+    reasons.push('platform_hotline');
+  } else if (isExplicitOwner || isOwnerMention) {
+    type = 'owner';
+    signals.push({ key: 'owner_direct_seller', points: -60, label: 'Признак прямого собственника (-60)' });
+    reasons.push('owner_direct_seller');
+    if (isExplicitOwner) {
+      reasons.push('explicit_site_seller_type');
+    }
+  } else if (isExplicitAgency || reasons.includes('agency_name')) {
+    type = 'agency';
+  } else if (
+    isExplicitAgent ||
+    reasons.includes('whatsapp_realtor_group') ||
+    matchedKeywords > 0 ||
+    reasons.includes('phone_repeated_across_listings')
+  ) {
+    type = 'agent';
+  }
+
+  // Calculate score
+  let rawScore = 0;
+  if (type === 'owner') {
+    rawScore = 0;
+  } else if (type === 'suspicious') {
+    rawScore = 0;
+  } else {
+    // Sum positive signal points + baseline 15
+    const totalPoints = 15 + signals.filter((s) => s.points > 0).reduce((sum, s) => sum + s.points, 0);
+    rawScore = Math.min(0.99, Math.max(0.10, totalPoints / 100));
+  }
+
+  const confidence = Number(rawScore.toFixed(2));
+
+  // Determine auto-accept
+  let autoAccepted = false;
+  let autoAcceptPolicy: string | undefined = undefined;
+
+  if (type !== 'owner' && type !== 'suspicious' && !isOwnerMention && isAzMobile) {
+    if (origin === 'website' && confidence >= AUTO_ACCEPT_WEBSITE_THRESHOLD) {
+      autoAccepted = true;
+      autoAcceptPolicy = AUTO_ACCEPT_WEBSITE_POLICY;
+    } else if (origin === 'whatsapp' && input.isRealtorOnlyWhatsAppGroup && confidence >= WHATSAPP_REALTOR_GROUP_AUTO_ACCEPT_THRESHOLD) {
+      autoAccepted = true;
+      autoAcceptPolicy = AUTO_ACCEPT_WHATSAPP_POLICY;
+    } else if (origin === 'social' && input.alreadyVerifiedInDb) {
+      autoAccepted = true;
+      autoAcceptPolicy = 'AUTO_MERGE_VERIFIED_EXISTING';
+    }
+  }
+
+  return {
+    type,
+    confidence,
+    reasons,
+    signals,
+    ruleVersion: CONFIDENCE_POLICY_VERSION,
+    classifiedAt: new Date().toISOString(),
+    autoAccept: autoAccepted,
+    autoAccepted,
+    autoAcceptPolicy,
+  };
 }

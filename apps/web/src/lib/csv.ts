@@ -4,9 +4,62 @@ export function csvCell(value: unknown): string {
   let text = String(v ?? '');  if (/^[=+\-@]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
-export function contactsCsv(rows: Array<Record<string, unknown>>): string {
-  const keys = ['name', 'type', 'originalPhone', 'normalizedPhone', 'agency', 'username', 'platform', 'verificationStatus', 'confidence', 'firstSeenAt', 'lastSeenAt'];
-  return [`\uFEFF${keys.map(csvCell).join(',')}`, ...rows.map((row) => keys.map((key) => csvCell(row[key])).join(','))].join('\r\n');
+interface ContactCsvFields {
+  name?: unknown;
+  type?: unknown;
+  originalPhone?: unknown;
+  normalizedPhone?: unknown;
+  agency?: unknown;
+  username?: unknown;
+  platform?: unknown;
+  verificationStatus?: unknown;
+  confidence?: unknown;
+  originGroups?: unknown;
+  firstSeenAt?: unknown;
+  lastSeenAt?: unknown;
+}
+
+export function contactsCsv<T extends ContactCsvFields>(rows: T[]): string {
+  const canonical = new Map<string, ContactCsvFields>();
+  for (const row of rows) {
+    const phone = typeof row.normalizedPhone === 'string' ? row.normalizedPhone : '';
+    const previous = canonical.get(phone);
+    if (!previous) {
+      canonical.set(phone, row);
+      continue;
+    }
+    const origins = new Set([
+      ...(Array.isArray(previous.originGroups) ? previous.originGroups.filter((value): value is string => typeof value === 'string') : []),
+      ...(Array.isArray(row.originGroups) ? row.originGroups.filter((value): value is string => typeof value === 'string') : []),
+    ]);
+    canonical.set(phone, { ...previous, ...row, originGroups: Array.from(origins) });
+  }
+  const columns: Array<[string, (row: ContactCsvFields) => unknown]> = [
+    ['name', (row) => row.name],
+    ['professional_type', (row) => row.type === 'agency' ? 'AGENCY' : row.type === 'agent' ? 'REALTOR' : 'UNKNOWN'],
+    ['original_phone', (row) => row.originalPhone],
+    ['normalized_phone', (row) => row.normalizedPhone],
+    ['agency', (row) => row.agency],
+    ['username', (row) => row.username],
+    ['platform', (row) => row.platform],
+    ['verification_status', (row) => row.verificationStatus],
+    ['confidence', (row) => Math.round(Number(row.confidence ?? 0) * 100)],
+    ['origin_groups', (row) => row.originGroups],
+    ['first_seen_at', (row) => row.firstSeenAt],
+    ['last_seen_at', (row) => row.lastSeenAt],
+  ];
+  return [
+    `\uFEFF${columns.map(([header]) => csvCell(header)).join(',')}`,
+    ...Array.from(canonical.values()).map((row) =>
+      columns
+        .map(([, value]) => {
+          let val = value(row);
+          if (Array.isArray(val)) val = val.join('; ');
+          return csvCell(val);
+        })
+        .join(',')
+    ),
+  ].join('\r\n');
 }
 
 export function parseCsv(text: string): string[][] {

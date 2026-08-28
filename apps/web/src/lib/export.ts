@@ -15,6 +15,7 @@ export interface CanonicalContactExportRow {
   platform?: string | null;
   confidence: number;
   verificationStatus: string;
+  originGroups?: string[];
   firstSeenAt: string;
   lastSeenAt: string;
   sources?: string[];
@@ -58,12 +59,15 @@ export async function generateContactsXlsx(
     { header: 'Name', key: 'name', width: 25 },
     { header: 'Agency', key: 'agency', width: 25 },
     { header: 'City', key: 'city', width: 15 },
-    { header: 'Type', key: 'type', width: 12 },
+    { header: 'Type', key: 'type', width: 14 },
+    { header: 'Confidence', key: 'confidence', width: 14 },
+    { header: 'Origin Groups', key: 'originGroups', width: 22 },
     { header: 'Platforms', key: 'platforms', width: 25 },
     { header: 'Telegram', key: 'telegram', width: 20 },
     { header: 'Instagram', key: 'instagram', width: 20 },
     { header: 'TikTok', key: 'tiktok', width: 20 },
     { header: 'Facebook', key: 'facebook', width: 20 },
+    { header: 'WhatsApp Sources', key: 'whatsappSources', width: 25 },
     { header: 'Website Sources', key: 'website', width: 25 },
     { header: 'Evidence Count', key: 'evidenceCount', width: 15 },
     { header: 'WhatsApp Direct Link', key: 'whatsappUrl', width: 35 },
@@ -88,7 +92,8 @@ export async function generateContactsXlsx(
     const igUser = evList.find(e => e.platform === 'instagram')?.username || (c.platform === 'instagram' ? c.username : '');
     const tkUser = evList.find(e => e.platform === 'tiktok')?.username || (c.platform === 'tiktok' ? c.username : '');
     const fbUser = evList.find(e => e.platform === 'facebook')?.username || (c.platform === 'facebook' ? c.username : '');
-    const webSources = evList.filter(e => !['telegram', 'instagram', 'tiktok', 'facebook'].includes(e.platform)).map(e => e.platform).join(', ');
+    const waSources = evList.filter(e => e.platform === 'whatsapp' || e.sourceUrl.includes('whatsapp.com')).map(e => e.sourceUrl).join('; ');
+    const webSources = evList.filter(e => !['telegram', 'instagram', 'tiktok', 'facebook', 'whatsapp'].includes(e.platform)).map(e => e.platform).join(', ');
 
     const isMobile = isEligibleWhatsAppMobile(c.normalizedPhone);
     const whatsappUrl = isMobile ? toWhatsAppDirectLink(c.normalizedPhone) : '';
@@ -99,11 +104,14 @@ export async function generateContactsXlsx(
       agency: c.agency || '',
       city: c.city || 'Bakı',
       type: c.type,
+      confidence: `${Math.round(c.confidence * 100)}%`,
+      originGroups: (c.originGroups || []).join('; '),
       platforms: platforms.join(', '),
       telegram: tgUser ? `@${tgUser.replace(/^@/, '')}` : '',
       instagram: igUser ? `@${igUser.replace(/^@/, '')}` : '',
       tiktok: tkUser ? `@${tkUser.replace(/^@/, '')}` : '',
       facebook: fbUser ? fbUser : '',
+      whatsappSources: waSources,
       website: webSources,
       evidenceCount: evList.length || c.evidenceCount || 1,
       whatsappUrl,

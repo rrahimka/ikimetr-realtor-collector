@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ApiButton } from './api-button';
+import { ApiButton, apiMutation } from './api-button';
+import { showToast } from './toast';
 import { nextBinaRunAt, readBinaSummary } from '../lib/bina-view';
 import { formatDateTime, t, tEnum, type Lang } from '../lib/i18n';
 import {
@@ -68,6 +69,8 @@ export function SourcesTable({
   initialWhatsAppGroups,
 }: SourcesTableProps) {
   const [filter, setFilter] = useState<'all' | SourceCategory>('all');
+  const [deletingSource, setDeletingSource] = useState<SourceRowData | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const totalCount = sources.length;
   const websiteSources = sources.filter((s) => getSourceCategory(s.type || s.locator) === 'website');
@@ -75,6 +78,25 @@ export function SourcesTable({
 
   const showWebsites = filter === 'all' || filter === 'website';
   const showSocials = filter === 'all' || filter === 'social';
+
+  async function handleDeleteConfirm() {
+    if (!deletingSource) return;
+    setIsDeleting(true);
+    try {
+      const res = await apiMutation(`/api/sources/${deletingSource.id}`, 'DELETE');
+      if (!res.ok) {
+        showToast(t(lang, 'toast.deleteFailed'), 'error');
+        return;
+      }
+      showToast(t(lang, 'toast.sourceDeleted'), 'success');
+      setDeletingSource(null);
+      window.location.reload();
+    } catch {
+      showToast(t(lang, 'toast.deleteFailed'), 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   const renderTable = (items: SourceRowData[], emptyMessage: string) => {
     return (
@@ -236,9 +258,9 @@ export function SourcesTable({
                       )}
                     </td>
 
-                    {/* Col 6: Normal Start / Stop Action Controls */}
+                    {/* Col 6: Normal Start / Stop and Delete Action Controls */}
                     <td>
-                      <div className="toolbar">
+                      <div className="toolbar" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                         {isRunning && run ? (
                           <ApiButton
                             url={`/api/runs/${run.id}/cancel`}
@@ -262,6 +284,15 @@ export function SourcesTable({
                             errorToast={t(lang, 'toast.runFailed')}
                           />
                         )}
+                        <button
+                          type="button"
+                          className="danger"
+                          style={{ padding: '0.35rem 0.6rem', fontSize: '12px' }}
+                          onClick={() => setDeletingSource(source)}
+                          title={t(lang, 'sources.delete')}
+                        >
+                          {t(lang, 'sources.delete')}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -336,6 +367,41 @@ export function SourcesTable({
               {renderTable(socialSources, 'Нет дополнительных ссылок соцсетей')}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingSource && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <div className="modal-dialog">
+            <h3 id="modal-title" style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: 700 }}>
+              {t(lang, 'sources.deleteConfirmTitle')}
+            </h3>
+            <p style={{ margin: '0 0 8px 0', color: 'var(--text)' }}>
+              <strong>{deriveSourceDisplayName(deletingSource)}</strong> (<code>{deletingSource.locator}</code>)
+            </p>
+            <p className="muted" style={{ margin: '0 0 20px 0', lineHeight: '1.5' }}>
+              {t(lang, 'sources.deleteConfirmText')}
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setDeletingSource(null)}
+                disabled={isDeleting}
+              >
+                {t(lang, 'sources.cancel')}
+              </button>
+              <button
+                type="button"
+                className="danger"
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+              >
+                {isDeleting ? t(lang, 'sources.actionDeleting') : t(lang, 'sources.deleteButton')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

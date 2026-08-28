@@ -130,13 +130,24 @@ export async function processRun(
       if (!phone.isValid || !phone.normalized) continue;
       found += 1;
       unique.add(phone.normalized);
-      const existed = Boolean(repos.contacts.byPhone(phone.normalized));
+      const existingContact = repos.contacts.byPhone(phone.normalized);
+      const existed = Boolean(existingContact);
+      const isApprovedWhatsAppGroup = item.platform === 'whatsapp' && item.whatsappContext?.approved === true;
+      const isRealtorOnlyWhatsApp = isApprovedWhatsAppGroup && item.whatsappContext?.realtorOnly === true;
       const classification = classifyEvidence({
         text: item.excerpt,
         occurrenceCount: extracted.length,
         explicitSellerType: item.explicitSellerType,
+        platform: item.platform,
+        sourceType: source.type,
+        sourceUrl: item.sourceUrl,
+        rawPhone: phone.raw,
+        normalizedPhone: phone.normalized,
+        isForeign: phone.isForeign,
+        isRealtorOnlyWhatsAppGroup: isRealtorOnlyWhatsApp,
+        alreadyVerifiedInDb: existingContact?.verificationStatus === 'verified',
       });
-      repos.contacts.persistEvidence({
+      const saved = repos.contacts.persistEvidence({
         normalizedPhone: phone.normalized,
         isForeign: phone.isForeign,
         evidence: {
@@ -162,8 +173,10 @@ export async function processRun(
           status: 'checked',
         });
       }
-      if (existed) duplicates += 1;
-      else newContacts += 1;
+      if (saved) {
+        if (existed) duplicates += 1;
+        else newContacts += 1;
+      }
     }
   }
 

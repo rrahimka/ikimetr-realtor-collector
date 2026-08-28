@@ -110,6 +110,51 @@ export default async function Dashboard() {
         </article>
       </section>
 
+      {/* Origins Breakdown & Review Queue Alert Cards */}
+      <section className="cards" style={{ marginTop: '16px' }}>
+        <article className="card">
+          <span className="muted">{t(lang, 'contacts.tabWebsites')}</span>
+          <strong style={{ color: '#1d4ed8' }}>{s.websiteContacts ?? 0}</strong>
+          <div className="muted" style={{ marginTop: '4px', fontSize: '11px' }}>
+            {t(lang, 'badge.website')}
+          </div>
+        </article>
+
+        <article className="card">
+          <span className="muted">{t(lang, 'contacts.tabSocial')}</span>
+          <strong style={{ color: '#be185d' }}>{s.socialContacts ?? 0}</strong>
+          <div className="muted" style={{ marginTop: '4px', fontSize: '11px' }}>
+            {t(lang, 'badge.social')}
+          </div>
+        </article>
+
+        <article className="card">
+          <span className="muted">{t(lang, 'contacts.tabWhatsApp')}</span>
+          <strong style={{ color: '#15803d' }}>{s.whatsappContacts ?? 0}</strong>
+          <div className="muted" style={{ marginTop: '4px', fontSize: '11px' }}>
+            {t(lang, 'badge.whatsapp')}
+          </div>
+        </article>
+
+        <article className="card">
+          <span className="muted">{t(lang, 'review.title')}</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <strong style={{ color: (s.unreviewedContacts ?? 0) > 0 ? 'var(--warning)' : 'var(--success)' }}>
+              {s.unreviewedContacts ?? 0}
+            </strong>
+          </div>
+          <div className="muted" style={{ marginTop: '4px', fontSize: '11px' }}>
+            {(s.unreviewedContacts ?? 0) > 0 ? (
+              <a href="/review" style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                {t(lang, 'review.subtitle')} →
+              </a>
+            ) : (
+              'Все кандидаты проверены'
+            )}
+          </div>
+        </article>
+      </section>
+
       {/* Today Section */}
       <section className="panel" style={{ marginTop: '24px' }}>
         <div style={{ marginBottom: '16px' }}>

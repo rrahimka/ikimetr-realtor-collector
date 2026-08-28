@@ -80,6 +80,30 @@ describe('worker',()=>{
   it('stops a run before writes when cancellation is requested',async()=>{const {repos,run}=setup();repos.runs.requestCancellation(run.id);await runWorkerOnce(repos,()=>Promise.resolve({pagesChecked:1,estimatedItems:1,items:[{sourceUrl:'https://fixture.invalid/page',locationType:'listing',excerpt:'Makler 050 123 45 67',rawPhone:'050 123 45 67',platform:'fixture',fingerprint:'worker-fingerprint-2'}]}));expect(repos.runs.get(run.id)?.status).toBe('cancelled');expect(repos.contacts.list()).toHaveLength(0);});
   it('records one connector failure without throwing from the polling loop',async()=>{const {repos,run}=setup();await expect(runWorkerOnce(repos,()=>Promise.reject(new Error('source blocked')))).resolves.toBe(true);expect(repos.runs.get(run.id)).toMatchObject({status:'failed',error:'source blocked'});});
 
+  it('keeps a high-confidence contact from a mixed WhatsApp group in review', async () => {
+    db = createDatabase(':memory:');
+    const repos = createRepositories(db);
+    const source = repos.sources.create({ name: 'Mixed WhatsApp', type: 'telegram_group', locator: 'https://chat.whatsapp.com/mixed', language: 'mixed', maxPages: 1, maxDepth: 0, delayMs: 0, enabled: true, killSwitch: false });
+    repos.runs.enqueue(source.id);
+
+    await runWorkerOnce(repos, () => Promise.resolve({
+      pagesChecked: 1,
+      estimatedItems: 1,
+      items: [{
+        sourceUrl: 'whatsapp://group/mixed?msg=1',
+        locationType: 'comment',
+        excerpt: 'Baku Luxury Real Estate Agency. Realtor sales and rent.',
+        rawPhone: '+994507776655',
+        platform: 'whatsapp',
+        fingerprint: 'mixed-whatsapp-0001',
+        explicitSellerType: 'agency',
+        whatsappContext: { approved: true, realtorOnly: false },
+      }],
+    }));
+
+    expect(repos.contacts.list()[0]).toMatchObject({ verificationStatus: 'unreviewed' });
+  });
+
   it('stores a protected Bina stop as blocked with a safe audit summary',async()=>{
     db=createDatabase(':memory:');const repos=createRepositories(db);const source=repos.sources.create({name:'Bina',type:'bina_agency',locator:'https://bina.az/search',language:'AZ',maxPages:5,maxDepth:0,delayMs:10000,enabled:true,killSwitch:false});const run=repos.runs.enqueue(source.id);
     await runWorkerOnce(repos,()=>Promise.resolve({items:[],pagesChecked:0,estimatedItems:0,stopReason:'captcha',outcomes:{accepted:0,duplicate:0,private_seller:0,missing_phone:0,invalid_phone:0,page_removed:0,blocked:1,parse_error:0,cancelled:0}}));

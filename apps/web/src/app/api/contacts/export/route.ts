@@ -8,14 +8,22 @@ import {
 import { getDb, getRepositories } from '../../../../lib/db';
 import { requireApi, apiError } from '../../../../lib/http';
 
+import type { OriginGroup } from '@ikimetr/core';
+
 export async function GET(request: NextRequest) {
   try {
     await requireApi();
     const { searchParams } = new URL(request.url);
     const format = searchParams.get('format') || 'csv';
+    const origin = searchParams.get('origin');
+    const status = searchParams.get('status');
 
+    const originFilter: OriginGroup | undefined = origin === 'website' || origin === 'social' || origin === 'whatsapp' ? origin : undefined;
     const repos = getRepositories();
-    const contacts = repos.contacts.list();
+    const contacts = repos.contacts.list('', {
+      origin: originFilter,
+      verificationStatus: status || undefined,
+    });
     const db = getDb();
 
     if (format === 'xlsx') {

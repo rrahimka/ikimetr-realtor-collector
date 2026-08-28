@@ -1,10 +1,55 @@
-import type { Classification, EvidenceInput, SourceInput, LeadInput, LeadRecord, LeadType, LeadStatus, ConfidenceLevel } from '@ikimetr/core';
+import {
+  type Classification,
+  type EvidenceInput,
+  type SourceInput,
+  type LeadInput,
+  type LeadRecord,
+  type LeadType,
+  type LeadStatus,
+  type ConfidenceLevel,
+  type OriginGroup,
+  type SignalBreakdown,
+  resolveOriginGroup,
+} from '@ikimetr/core';
 import type { CollectorDatabase } from './client';
 
 const now = () => new Date().toISOString();
 type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'blocked';
 type RunCounters = { pagesChecked: number; phonesFound: number; uniquePhones: number };
 type BinaRunSummary = { outcomes: Record<string, number>; newContacts: number; duplicates: number; agenciesFound?: number };
+
+export interface ContactRecord {
+  id: number;
+  normalizedPhone: string;
+  originalPhone: string;
+  isForeign: boolean;
+  type: string;
+  name: string | null;
+  agency: string | null;
+  city: string | null;
+  username: string | null;
+  platform: string | null;
+  confidence: number;
+  reasons: string[];
+  signals: SignalBreakdown[];
+  autoAccepted: boolean;
+  autoAcceptPolicy?: string | undefined;
+  verificationStatus: string;
+  mergedIntoId: number | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  originGroups: OriginGroup[];
+  evidenceCount: number;
+}
+
+export interface ReviewCandidate extends ContactRecord {
+  primaryOrigin: OriginGroup;
+  evidenceUrl: string;
+  evidenceExcerpt: string;
+  evidenceLocationType: string;
+  evidenceDiscoveredAt: string;
+}
+
 export interface DashboardStats {
   sources: number;
   runs: number;
@@ -15,6 +60,11 @@ export interface DashboardStats {
   newContacts: number;
   newContactsToday: number;
   newContactsLastRun: number;
+  websiteContacts: number;
+  socialContacts: number;
+  whatsappContacts: number;
+  unreviewedContacts: number;
+  autoAcceptedToday: number;
   evidence: number;
   evidenceToday: number;
   enrichedContactsToday: number;
@@ -38,9 +88,83 @@ export function getBakuStartOfDay(targetDate: Date = new Date()): string {
   return new Date(`${year}-${month}-${day}T00:00:00+04:00`).toISOString();
 }
 
-function mapSource(row: Record<string, unknown>) { return { id: row.id as number, name: row.name as string, type: row.type as SourceInput['type'], locator: row.locator as string, language: row.language as SourceInput['language'], maxPages: row.max_pages as number, maxDepth: row.max_depth as number, delayMs: row.delay_ms as number, enabled: Boolean(row.enabled), killSwitch: Boolean(row.kill_switch) }; }
-function mapRun(row: Record<string, unknown>) { return { id: row.id as number, sourceId: row.source_id as number, status: row.status as RunStatus, startedAt: row.started_at as string | null, finishedAt: row.finished_at as string | null, pagesChecked: row.pages_checked as number, phonesFound: row.phones_found as number, uniquePhones: row.unique_phones as number, error: row.error as string | null, cancellationRequested: Boolean(row.cancellation_requested), needsReview: Boolean(row.needs_review) }; }
-function mapContact(row: Record<string, unknown>) { return { id: row.id as number, normalizedPhone: row.normalized_phone as string, originalPhone: row.original_phone as string, isForeign: Boolean(row.is_foreign), type: row.type as string, name: row.name as string | null, agency: row.agency as string | null, city: row.city as string | null, username: row.username as string | null, platform: row.platform as string | null, confidence: row.confidence as number, reasons: JSON.parse(row.reasons_json as string) as string[], verificationStatus: row.verification_status as string, mergedIntoId: row.merged_into_id as number | null, firstSeenAt: row.first_seen_at as string, lastSeenAt: row.last_seen_at as string }; }
+function mapSource(row: Record<string, unknown>) {
+  return {
+    id: row.id as number,
+    name: row.name as string,
+    type: row.type as SourceInput['type'],
+    locator: row.locator as string,
+    language: row.language as SourceInput['language'],
+    maxPages: row.max_pages as number,
+    maxDepth: row.max_depth as number,
+    delayMs: row.delay_ms as number,
+    enabled: Boolean(row.enabled),
+    killSwitch: Boolean(row.kill_switch),
+    deletedAt: (row.deleted_at as string | null) || null,
+  };
+}
+
+function mapRun(row: Record<string, unknown>) {
+  return {
+    id: row.id as number,
+    sourceId: row.source_id as number,
+    status: row.status as RunStatus,
+    startedAt: row.started_at as string | null,
+    finishedAt: row.finished_at as string | null,
+    pagesChecked: row.pages_checked as number,
+    phonesFound: row.phones_found as number,
+    uniquePhones: row.unique_phones as number,
+    error: row.error as string | null,
+    cancellationRequested: Boolean(row.cancellation_requested),
+    needsReview: Boolean(row.needs_review),
+  };
+}
+
+function mapContact(row: Record<string, unknown>, originGroups?: OriginGroup[], evidenceCount?: number): ContactRecord {
+  let reasons: string[] = [];
+  let signals: SignalBreakdown[] = [];
+  let autoAccepted = false;
+  let autoAcceptPolicy: string | undefined = undefined;
+
+  try {
+    const parsed: unknown = JSON.parse(row.reasons_json as string);
+    if (Array.isArray(parsed)) {
+      reasons = parsed.filter((value): value is string => typeof value === 'string');
+    } else if (parsed && typeof parsed === 'object') {
+      const value = parsed as Record<string, unknown>;
+      reasons = Array.isArray(value.reasons) ? value.reasons.filter((item): item is string => typeof item === 'string') : [];
+      signals = Array.isArray(value.signals) ? value.signals.filter((item): item is SignalBreakdown => Boolean(item) && typeof item === 'object' && typeof (item as SignalBreakdown).key === 'string' && typeof (item as SignalBreakdown).points === 'number' && typeof (item as SignalBreakdown).label === 'string') : [];
+      autoAccepted = Boolean(value.autoAccepted);
+      autoAcceptPolicy = typeof value.autoAcceptPolicy === 'string' ? value.autoAcceptPolicy : undefined;
+    }
+  } catch {
+    reasons = [];
+  }
+
+  return {
+    id: row.id as number,
+    normalizedPhone: row.normalized_phone as string,
+    originalPhone: row.original_phone as string,
+    isForeign: Boolean(row.is_foreign),
+    type: row.type as string,
+    name: (row.name as string | null) || null,
+    agency: (row.agency as string | null) || null,
+    city: (row.city as string | null) || null,
+    username: (row.username as string | null) || null,
+    platform: (row.platform as string | null) || null,
+    confidence: Number(row.confidence),
+    reasons,
+    signals,
+    autoAccepted,
+    autoAcceptPolicy,
+    verificationStatus: row.verification_status as string,
+    mergedIntoId: (row.merged_into_id as number | null) || null,
+    firstSeenAt: row.first_seen_at as string,
+    lastSeenAt: row.last_seen_at as string,
+    originGroups: originGroups && originGroups.length > 0 ? originGroups : [resolveOriginGroup(row.platform as string)],
+    evidenceCount: evidenceCount ?? 0,
+  };
+}
 function mapLead(row: Record<string, unknown>): LeadRecord {
   return {
     id: row.id as number,
@@ -80,14 +204,66 @@ export function createRepositories(db: CollectorDatabase) {
     list() { return (db.prepare('SELECT * FROM audit_events ORDER BY id').all() as Array<Record<string, unknown>>).map((row) => ({ id: row.id as number, action: row.action as string, entityType: row.entity_type as string, entityId: row.entity_id as number, details: JSON.parse(row.details_json as string) as unknown, createdAt: row.created_at as string })); },
   };
   const sources = {
-    create(input: SourceInput) { const time = now(); const result = db.prepare('INSERT INTO sources(name,type,locator,language,max_pages,max_depth,delay_ms,enabled,kill_switch,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(input.name, input.type, input.locator, input.language, input.maxPages, input.maxDepth, input.delayMs, Number(input.enabled), Number(input.killSwitch), time, time); return this.get(Number(result.lastInsertRowid))!; },
-    get(id: number) { const row = db.prepare('SELECT * FROM sources WHERE id=?').get(id) as Record<string, unknown> | undefined; return row ? mapSource(row) : undefined; },
-    list() { return (db.prepare('SELECT * FROM sources ORDER BY id DESC').all() as Record<string, unknown>[]).map(mapSource); },
-    update(id: number, input: Partial<SourceInput>) { const old = this.get(id); if (!old) throw new Error('source not found'); const next = { ...old, ...input }; db.prepare('UPDATE sources SET name=?,type=?,locator=?,language=?,max_pages=?,max_depth=?,delay_ms=?,enabled=?,kill_switch=?,updated_at=? WHERE id=?').run(next.name,next.type,next.locator,next.language,next.maxPages,next.maxDepth,next.delayMs,Number(next.enabled),Number(next.killSwitch),now(),id); return this.get(id)!; },
-    remove(id: number) { return db.prepare('DELETE FROM sources WHERE id=?').run(id).changes > 0; },
-    bulkRun(ids: number[]) { const enqueued: number[] = []; for (const id of ids) { if (!runs.hasActive(id)) { try { const run = runs.enqueue(id); enqueued.push(run.id); } catch { /* ignore if active */ } } } return enqueued; },
-    bulkKill(ids: number[]) { const updated: number[] = []; for (const id of ids) { const source = this.get(id); if (source) { this.update(id, { killSwitch: !source.killSwitch }); updated.push(id); } } return updated; },
-    bulkDelete(ids: number[]) { let count = 0; for (const id of ids) { if (this.remove(id)) count++; } return count; },
+    create(input: SourceInput) {
+      const time = now();
+      const result = db.prepare('INSERT INTO sources(name,type,locator,language,max_pages,max_depth,delay_ms,enabled,kill_switch,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(input.name, input.type, input.locator, input.language, input.maxPages, input.maxDepth, input.delayMs, Number(input.enabled), Number(input.killSwitch), time, time);
+      return this.get(Number(result.lastInsertRowid))!;
+    },
+    get(id: number) {
+      const row = db.prepare('SELECT * FROM sources WHERE id=?').get(id) as Record<string, unknown> | undefined;
+      return row ? mapSource(row) : undefined;
+    },
+    list() {
+      return (db.prepare('SELECT * FROM sources WHERE deleted_at IS NULL ORDER BY id DESC').all() as Record<string, unknown>[]).map(mapSource);
+    },
+    update(id: number, input: Partial<SourceInput>) {
+      const old = this.get(id);
+      if (!old) throw new Error('source not found');
+      const next = { ...old, ...input };
+      db.prepare('UPDATE sources SET name=?,type=?,locator=?,language=?,max_pages=?,max_depth=?,delay_ms=?,enabled=?,kill_switch=?,updated_at=? WHERE id=?').run(next.name,next.type,next.locator,next.language,next.maxPages,next.maxDepth,next.delayMs,Number(next.enabled),Number(next.killSwitch),now(),id);
+      return this.get(id)!;
+    },
+    remove(id: number) {
+      return db.transaction(() => {
+        const time = now();
+        const result = db.prepare('UPDATE sources SET deleted_at=?, enabled=0, kill_switch=1, updated_at=? WHERE id=? AND deleted_at IS NULL').run(time, time, id);
+        if (result.changes === 0) return false;
+        db.prepare("UPDATE runs SET status='cancelled', cancellation_requested=1, finished_at=COALESCE(finished_at, ?) WHERE source_id=? AND status='queued'").run(time, id);
+        db.prepare("UPDATE runs SET cancellation_requested=1 WHERE source_id=? AND status='running'").run(id);
+        audit.record('source.soft_delete', 'source', id, { preserved: ['contacts', 'evidence', 'runs'] });
+        return true;
+      })();
+    },
+    bulkRun(ids: number[]) {
+      const enqueued: number[] = [];
+      for (const id of ids) {
+        if (!runs.hasActive(id)) {
+          try {
+            const run = runs.enqueue(id);
+            enqueued.push(run.id);
+          } catch { /* ignore if active */ }
+        }
+      }
+      return enqueued;
+    },
+    bulkKill(ids: number[]) {
+      const updated: number[] = [];
+      for (const id of ids) {
+        const source = this.get(id);
+        if (source) {
+          this.update(id, { killSwitch: !source.killSwitch });
+          updated.push(id);
+        }
+      }
+      return updated;
+    },
+    bulkDelete(ids: number[]) {
+      let count = 0;
+      for (const id of ids) {
+        if (this.remove(id)) count++;
+      }
+      return count;
+    },
   };
   const keywords = {
     create(value:string,language:'AZ'|'RU'|'EN'|'mixed'){const result=db.prepare('INSERT OR IGNORE INTO keywords(value,language,created_at) VALUES(?,?,?)').run(value.trim(),language,now());if(!result.lastInsertRowid)return db.prepare('SELECT * FROM keywords WHERE value=?').get(value.trim()) as {id:number;value:string;language:string};return{id:Number(result.lastInsertRowid),value:value.trim(),language};},
@@ -95,12 +271,12 @@ export function createRepositories(db: CollectorDatabase) {
     remove(id:number){return db.prepare('DELETE FROM keywords WHERE id=?').run(id).changes>0;},
   };
   const runs = {
-    enqueue(sourceId: number) { try { const result = db.prepare("INSERT INTO runs(source_id,status,pages_checked,phones_found,unique_phones,cancellation_requested,needs_review,created_at) VALUES(?,'queued',0,0,0,0,0,?)").run(sourceId, now()); return this.get(Number(result.lastInsertRowid))!; } catch (error) { if (String(error).includes('UNIQUE')) throw new Error('source already has an active run'); throw error; } },
+    enqueue(sourceId: number) { const sourceRow=db.prepare('SELECT deleted_at FROM sources WHERE id=?').get(sourceId) as {deleted_at:string|null}|undefined; if(!sourceRow)throw new Error('source not found');if(sourceRow.deleted_at)throw new Error('source is deleted');try { const result = db.prepare("INSERT INTO runs(source_id,status,pages_checked,phones_found,unique_phones,cancellation_requested,needs_review,created_at) VALUES(?,'queued',0,0,0,0,0,?)").run(sourceId, now()); return this.get(Number(result.lastInsertRowid))!; } catch (error) { if (String(error).includes('UNIQUE')) throw new Error('source already has an active run'); throw error; } },
     get(id: number) { const row = db.prepare('SELECT * FROM runs WHERE id=?').get(id) as Record<string, unknown> | undefined; return row ? mapRun(row) : undefined; },
     list() { return (db.prepare('SELECT * FROM runs ORDER BY id DESC').all() as Record<string, unknown>[]).map(mapRun); },
     hasActive(sourceId: number) { return Boolean((db.prepare("SELECT 1 present FROM runs WHERE source_id=? AND status IN ('queued','running') LIMIT 1").get(sourceId) as { present: number } | undefined)?.present); },
     latestTerminal(sourceId: number) { const row = db.prepare("SELECT * FROM runs WHERE source_id=? AND status NOT IN ('queued','running') ORDER BY COALESCE(finished_at,created_at) DESC,id DESC LIMIT 1").get(sourceId) as Record<string, unknown> | undefined; return row ? mapRun(row) : undefined; },
-    claimNext() { const claim = db.transaction(() => { const row = db.prepare("SELECT id FROM runs WHERE status='queued' ORDER BY id LIMIT 1").get() as {id:number}|undefined; if (!row) return undefined; db.prepare("UPDATE runs SET status='running',started_at=? WHERE id=? AND status='queued'").run(now(), row.id); return this.get(row.id); }); return claim(); },
+    claimNext() { const claim = db.transaction(() => { const row = db.prepare("SELECT r.id FROM runs r JOIN sources s ON s.id=r.source_id WHERE r.status='queued' AND s.deleted_at IS NULL AND s.enabled=1 AND s.kill_switch=0 ORDER BY r.id LIMIT 1").get() as {id:number}|undefined; if (!row) return undefined; db.prepare("UPDATE runs SET status='running',started_at=? WHERE id=? AND status='queued'").run(now(), row.id); return this.get(row.id); }); return claim(); },
     requestCancellation(id: number) { db.prepare('UPDATE runs SET cancellation_requested=1 WHERE id=?').run(id); },
     shouldCancel(id: number) { return Boolean((db.prepare('SELECT cancellation_requested FROM runs WHERE id=?').get(id) as {cancellation_requested:number}|undefined)?.cancellation_requested); },
     finish(id: number, status: Exclude<RunStatus, 'queued'|'running'>, counters: RunCounters = { pagesChecked: 0, phonesFound: 0, uniquePhones: 0 }, error?: string) { db.prepare('UPDATE runs SET status=?,finished_at=?,pages_checked=?,phones_found=?,unique_phones=?,error=? WHERE id=?').run(status,now(),counters.pagesChecked,counters.phonesFound,counters.uniquePhones,error ?? null,id); },
@@ -108,11 +284,200 @@ export function createRepositories(db: CollectorDatabase) {
     recoverAbandoned() { return db.prepare("UPDATE runs SET status='failed',finished_at=?,needs_review=1,error=COALESCE(error,'Worker restarted during run') WHERE status='running'").run(now()).changes; },
   };
   const contacts = {
-    persistEvidence(input: { normalizedPhone: string; isForeign: boolean; evidence: EvidenceInput; classification: Classification }) { return db.transaction(() => { const time=now(); db.prepare(`INSERT INTO contacts(normalized_phone,original_phone,is_foreign,type,name,agency,city,username,platform,confidence,reasons_json,rule_version,classified_at,verification_status,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(normalized_phone) DO UPDATE SET last_seen_at=excluded.last_seen_at,name=COALESCE(excluded.name,contacts.name),agency=COALESCE(excluded.agency,contacts.agency),city=COALESCE(excluded.city,contacts.city),username=COALESCE(excluded.username,contacts.username),confidence=MAX(contacts.confidence,excluded.confidence)`).run(input.normalizedPhone,input.evidence.rawPhone,Number(input.isForeign),input.classification.type,input.evidence.name ?? null,input.evidence.agency ?? null,input.evidence.city ?? null,input.evidence.username ?? null,input.evidence.platform,input.classification.confidence,JSON.stringify(input.classification.reasons),input.classification.ruleVersion,input.classification.classifiedAt,'unreviewed',time,time); const contact=this.byPhone(input.normalizedPhone)!; db.prepare('INSERT OR IGNORE INTO evidence(contact_id,source_id,source_url,location_type,excerpt,raw_phone,platform,fingerprint,discovered_at) VALUES(?,?,?,?,?,?,?,?,?)').run(contact.id,input.evidence.sourceId,input.evidence.sourceUrl,input.evidence.locationType,input.evidence.excerpt,input.evidence.rawPhone,input.evidence.platform,input.evidence.fingerprint,time); return contact; })(); },
-    get(id: number) { const row=db.prepare('SELECT * FROM contacts WHERE id=?').get(id) as Record<string,unknown>|undefined; return row ? mapContact(row) : undefined; },
-    byPhone(phone: string) { const row=db.prepare('SELECT * FROM contacts WHERE normalized_phone=?').get(phone) as Record<string,unknown>|undefined; return row ? mapContact(row) : undefined; },
-    list(search='', filters: { type?: string | undefined; platform?: string | undefined; verificationStatus?: string | undefined; isForeign?: boolean | undefined; city?: string | undefined } = {}) { const clauses: string[] = []; const params: unknown[] = []; if (search) { clauses.push("(normalized_phone LIKE ? OR COALESCE(name,'') LIKE ? OR COALESCE(agency,'') LIKE ? OR COALESCE(city,'') LIKE ?)"); params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); } if (filters.type) { clauses.push('type = ?'); params.push(filters.type); } if (filters.platform) { clauses.push('platform = ?'); params.push(filters.platform); } if (filters.verificationStatus) { clauses.push('verification_status = ?'); params.push(filters.verificationStatus); } if (filters.isForeign !== undefined) { clauses.push('is_foreign = ?'); params.push(Number(filters.isForeign)); } if (filters.city) { clauses.push('city LIKE ?'); params.push(`%${filters.city}%`); } const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : ''; const rows = db.prepare(`SELECT * FROM contacts${where} ORDER BY id DESC`).all(...params); return (rows as Record<string,unknown>[]).map(mapContact); },
-    evidenceFor(phone: string) { return db.prepare('SELECT e.* FROM evidence e JOIN contacts c ON c.id=e.contact_id WHERE c.normalized_phone=? ORDER BY e.id').all(phone) as Array<Record<string,unknown>>; },
+    persistEvidence(input: { normalizedPhone: string; isForeign: boolean; evidence: EvidenceInput; classification: Classification }) {
+      if (input.classification.type === 'owner' || input.classification.type === 'suspicious') {
+        return undefined;
+      }
+
+      return db.transaction(() => {
+        const time = now();
+        const existing = this.byPhone(input.normalizedPhone);
+        const origin = resolveOriginGroup(input.evidence.platform, undefined, input.evidence.sourceUrl);
+        const isAutoAccept = Boolean(input.classification.autoAccept ?? input.classification.autoAccepted);
+
+        const reasonsData = JSON.stringify({
+          reasons: input.classification.reasons,
+          signals: input.classification.signals ?? [],
+          autoAccepted: isAutoAccept,
+          autoAcceptPolicy: input.classification.autoAcceptPolicy,
+        });
+
+        let initialStatus = 'unreviewed';
+        if (existing) {
+          initialStatus = existing.verificationStatus;
+        } else if (isAutoAccept) {
+          initialStatus = 'verified';
+        }
+
+        db.prepare(`
+          INSERT INTO contacts(
+            normalized_phone, original_phone, is_foreign, type, name, agency, city, username, platform,
+            confidence, reasons_json, rule_version, classified_at, verification_status, first_seen_at, last_seen_at
+          ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(normalized_phone) DO UPDATE SET
+            last_seen_at=excluded.last_seen_at,
+            name=COALESCE(excluded.name, contacts.name),
+            agency=COALESCE(excluded.agency, contacts.agency),
+            city=COALESCE(excluded.city, contacts.city),
+            username=COALESCE(excluded.username, contacts.username),
+            confidence=MAX(contacts.confidence, excluded.confidence),
+            reasons_json=excluded.reasons_json
+        `).run(
+          input.normalizedPhone,
+          input.evidence.rawPhone,
+          Number(input.isForeign),
+          input.classification.type,
+          input.evidence.name ?? null,
+          input.evidence.agency ?? null,
+          input.evidence.city ?? null,
+          input.evidence.username ?? null,
+          input.evidence.platform,
+          input.classification.confidence,
+          reasonsData,
+          input.classification.ruleVersion,
+          input.classification.classifiedAt,
+          initialStatus,
+          time,
+          time
+        );
+
+        const contact = this.byPhone(input.normalizedPhone)!;
+
+        db.prepare(`
+          INSERT OR IGNORE INTO evidence(
+            contact_id, source_id, source_url, location_type, excerpt, raw_phone, platform, fingerprint, discovered_at
+          ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          contact.id,
+          input.evidence.sourceId,
+          input.evidence.sourceUrl,
+          input.evidence.locationType,
+          input.evidence.excerpt,
+          input.evidence.rawPhone,
+          input.evidence.platform,
+          input.evidence.fingerprint,
+          time
+        );
+
+        if (!existing && isAutoAccept) {
+          audit.record('contact.auto_accept', 'contact', contact.id, {
+            phone: input.normalizedPhone,
+            confidence: input.classification.confidence,
+            policy: input.classification.autoAcceptPolicy,
+            origin,
+          });
+        }
+
+        return contact;
+      })();
+    },
+    get(id: number) {
+      const row = db.prepare('SELECT * FROM contacts WHERE id=?').get(id) as Record<string, unknown> | undefined;
+      if (!row) return undefined;
+      const originGroups = this.getOriginGroups(id);
+      const evidenceCount = (db.prepare('SELECT COUNT(*) count FROM evidence WHERE contact_id=?').get(id) as { count: number }).count;
+      return mapContact(row, originGroups, evidenceCount);
+    },
+    byPhone(phone: string) {
+      const row = db.prepare('SELECT * FROM contacts WHERE normalized_phone=?').get(phone) as Record<string, unknown> | undefined;
+      if (!row) return undefined;
+      const originGroups = this.getOriginGroups(Number(row.id));
+      const evidenceCount = (db.prepare('SELECT COUNT(*) count FROM evidence WHERE contact_id=?').get(row.id) as { count: number }).count;
+      return mapContact(row, originGroups, evidenceCount);
+    },
+    getOriginGroups(contactId: number): OriginGroup[] {
+      const rows = db.prepare('SELECT DISTINCT platform, source_url FROM evidence WHERE contact_id=?').all(contactId) as Array<{ platform: string; source_url: string }>;
+      const groups = new Set<OriginGroup>();
+      for (const r of rows) {
+        groups.add(resolveOriginGroup(r.platform, undefined, r.source_url));
+      }
+      return groups.size > 0 ? Array.from(groups) : ['website'];
+    },
+    list(
+      search = '',
+      filters: {
+        type?: string | undefined;
+        platform?: string | undefined;
+        origin?: OriginGroup | undefined;
+        verificationStatus?: string | undefined;
+        isForeign?: boolean | undefined;
+        city?: string | undefined;
+      } = {}
+    ) {
+      const clauses: string[] = [];
+      const params: unknown[] = [];
+      clauses.push('c.merged_into_id IS NULL');
+
+      if (search) {
+        clauses.push("(c.normalized_phone LIKE ? OR COALESCE(c.name,'') LIKE ? OR COALESCE(c.agency,'') LIKE ? OR COALESCE(c.city,'') LIKE ?)");
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      }
+      if (filters.type) {
+        clauses.push('c.type = ?');
+        params.push(filters.type);
+      }
+      if (filters.platform) {
+        clauses.push('c.platform = ?');
+        params.push(filters.platform);
+      }
+      if (filters.verificationStatus) {
+        clauses.push('c.verification_status = ?');
+        params.push(filters.verificationStatus);
+      }
+      if (filters.isForeign !== undefined) {
+        clauses.push('c.is_foreign = ?');
+        params.push(Number(filters.isForeign));
+      }
+      if (filters.city) {
+        clauses.push('c.city LIKE ?');
+        params.push(`%${filters.city}%`);
+      }
+
+      const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
+      const rows = db.prepare(`
+        SELECT c.*,
+          COUNT(e.id) as evidence_count,
+          GROUP_CONCAT(DISTINCT e.platform || '::' || e.source_url) as evidence_summary
+        FROM contacts c
+        LEFT JOIN evidence e ON e.contact_id = c.id
+        ${where}
+        GROUP BY c.id
+        ORDER BY c.id DESC
+      `).all(...params) as Array<Record<string, unknown>>;
+
+      let result = rows.map((row) => {
+        const rawSummary = typeof row.evidence_summary === 'string' ? row.evidence_summary : '';
+        const groups = new Set<OriginGroup>();
+        if (rawSummary) {
+          const entries = rawSummary.split(',');
+          for (const entry of entries) {
+            const [plat, surl] = entry.split('::');
+            groups.add(resolveOriginGroup(plat, undefined, surl));
+          }
+        }
+        const originGroups = groups.size > 0 ? Array.from(groups) : [resolveOriginGroup(row.platform as string)];
+        return mapContact(row, originGroups, Number(row.evidence_count || 0));
+      });
+
+      if (filters.origin) {
+        result = result.filter((c) => c.originGroups.includes(filters.origin!));
+      }
+      return result;
+    },
+    originCounts() {
+      const all = this.list();
+      return {
+        total: all.length,
+        website: all.filter((c) => c.originGroups.includes('website')).length,
+        social: all.filter((c) => c.originGroups.includes('social')).length,
+        whatsapp: all.filter((c) => c.originGroups.includes('whatsapp')).length,
+        unreviewed: all.filter((c) => c.verificationStatus === 'unreviewed').length,
+        verified: all.filter((c) => c.verificationStatus === 'verified').length,
+      };
+    },
+    evidenceFor(phone: string) {
+      return db.prepare('SELECT e.* FROM evidence e JOIN contacts c ON c.id=e.contact_id WHERE c.normalized_phone=? ORDER BY e.id').all(phone) as Array<Record<string, unknown>>;
+    },
   };
   const evidence = {
     wasUrlSeenSince(sourceId: number, sourceUrl: string, since: string) { return Boolean((db.prepare('SELECT 1 present FROM evidence WHERE source_id=? AND source_url=? AND discovered_at>=? LIMIT 1').get(sourceId, sourceUrl, since) as { present: number } | undefined)?.present); },
@@ -120,8 +485,85 @@ export function createRepositories(db: CollectorDatabase) {
   const reviews = {
     merge(targetId:number,sourceId:number,reason:string) { return db.transaction(() => { if (targetId===sourceId) throw new Error('cannot merge a contact into itself'); const result=db.prepare('INSERT INTO contact_merges(target_contact_id,source_contact_id,reason,merged_at) VALUES(?,?,?,?)').run(targetId,sourceId,reason,now()); db.prepare('UPDATE contacts SET merged_into_id=? WHERE id=?').run(targetId,sourceId); const id=Number(result.lastInsertRowid); audit.record('contact.merge','contact',sourceId,{targetId,reason}); return {id,targetId,sourceId}; })(); },
     undoMerge(id:number,reason:string) { return db.transaction(() => { const merge=db.prepare('SELECT * FROM contact_merges WHERE id=? AND undone_at IS NULL').get(id) as {source_contact_id:number}|undefined; if(!merge) throw new Error('active merge not found'); db.prepare('UPDATE contacts SET merged_into_id=NULL WHERE id=?').run(merge.source_contact_id); db.prepare('UPDATE contact_merges SET undone_at=?,undo_reason=? WHERE id=?').run(now(),reason,id); audit.record('contact.merge.undo','contact',merge.source_contact_id,{mergeId:id,reason}); })(); },
-    setStatus(contactId:number,status:'verified'|'rejected'|'unreviewed'){if(!contacts.get(contactId))throw new Error('contact not found');db.prepare('UPDATE contacts SET verification_status=? WHERE id=?').run(status,contactId);audit.record(`contact.${status}`,'contact',contactId,{status});return contacts.get(contactId)!;},
+    setStatus(contactId:number,status:'verified'|'rejected'|'unreviewed'){
+      if(!contacts.get(contactId))throw new Error('contact not found');
+      db.prepare('UPDATE contacts SET verification_status=? WHERE id=?').run(status,contactId);
+      audit.record(`contact.${status}`,'contact',contactId,{status});
+      return contacts.get(contactId)!;
+    },
+    confirm(contactId: number) {
+      return this.setStatus(contactId, 'verified');
+    },
+    reject(contactId: number) {
+      return this.setStatus(contactId, 'rejected');
+    },
     listMerges(){return db.prepare('SELECT * FROM contact_merges ORDER BY id DESC').all() as Array<Record<string,unknown>>;},
+    pendingCount() {
+      const row = db.prepare("SELECT COUNT(*) as count FROM contacts WHERE verification_status = 'unreviewed' AND merged_into_id IS NULL").get() as { count: number };
+      return row.count;
+    },
+    listPending(filters: { origin?: OriginGroup; confidenceTier?: 'gte90' | '70-89' | 'lt70' } = {}): ReviewCandidate[] {
+      const rows = db.prepare(`
+        SELECT c.*,
+          e.id as evidence_id,
+          e.source_url as evidence_url,
+          e.location_type as evidence_location_type,
+          e.excerpt as evidence_excerpt,
+          e.platform as evidence_platform,
+          e.discovered_at as evidence_discovered_at,
+          COUNT(e_all.id) as evidence_count,
+          GROUP_CONCAT(DISTINCT e_all.platform || '::' || e_all.source_url) as evidence_summary
+        FROM contacts c
+        LEFT JOIN evidence e ON e.id = (SELECT id FROM evidence WHERE contact_id = c.id ORDER BY id DESC LIMIT 1)
+        LEFT JOIN evidence e_all ON e_all.contact_id = c.id
+        WHERE c.verification_status = 'unreviewed' AND c.merged_into_id IS NULL
+        GROUP BY c.id
+        ORDER BY c.confidence DESC, c.id DESC
+      `).all() as Array<Record<string, unknown>>;
+
+      let mapped = rows.map((row) => {
+        const rawSummary = typeof row.evidence_summary === 'string' ? row.evidence_summary : '';
+        const groups = new Set<OriginGroup>();
+        if (rawSummary) {
+          const entries = rawSummary.split(',');
+          for (const entry of entries) {
+            const [plat, surl] = entry.split('::');
+            groups.add(resolveOriginGroup(plat, undefined, surl));
+          }
+        }
+        const primaryOrigin = resolveOriginGroup(
+          (row.evidence_platform as string) || (row.platform as string),
+          undefined,
+          (row.evidence_url as string)
+        );
+        groups.add(primaryOrigin);
+
+        const contact = mapContact(row, Array.from(groups), Number(row.evidence_count || 1));
+        return {
+          ...contact,
+          primaryOrigin,
+          evidenceUrl: (row.evidence_url as string) || (contact.platform ? `https://${contact.platform}` : '#'),
+          evidenceExcerpt: (row.evidence_excerpt as string) || '',
+          evidenceLocationType: (row.evidence_location_type as string) || 'listing',
+          evidenceDiscoveredAt: (row.evidence_discovered_at as string) || contact.firstSeenAt,
+        };
+      });
+
+      if (filters.origin) {
+        mapped = mapped.filter((item) => item.originGroups.includes(filters.origin!) || item.primaryOrigin === filters.origin);
+      }
+      if (filters.confidenceTier) {
+        if (filters.confidenceTier === 'gte90') {
+          mapped = mapped.filter((item) => item.confidence >= 0.90);
+        } else if (filters.confidenceTier === '70-89') {
+          mapped = mapped.filter((item) => item.confidence >= 0.70 && item.confidence < 0.90);
+        } else if (filters.confidenceTier === 'lt70') {
+          mapped = mapped.filter((item) => item.confidence < 0.70);
+        }
+      }
+
+      return mapped;
+    },
   };
 
   const binaListings = {
@@ -478,10 +920,14 @@ export function createRepositories(db: CollectorDatabase) {
       const [year, month, day] = formatter.format(targetDate).split('-');
       const bakuStartIso = new Date(`${year}-${month}-${day}T00:00:00+04:00`).toISOString();
 
-      const sourcesTotal = (db.prepare('SELECT COUNT(*) count FROM sources').get() as { count: number }).count;
+      const sourcesTotal = (db.prepare('SELECT COUNT(*) count FROM sources WHERE deleted_at IS NULL').get() as { count: number }).count;
       const runsTotal = (db.prepare('SELECT COUNT(*) count FROM runs').get() as { count: number }).count;
       const contactsTotal = (db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL').get() as { count: number }).count;
       const newContactsToday = (db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL AND first_seen_at >= ?').get(bakuStartIso) as { count: number }).count;
+
+      const originCounts = contacts.originCounts();
+      const unreviewedContacts = originCounts.unreviewed;
+      const autoAcceptedToday = (db.prepare("SELECT COUNT(*) count FROM audit_events WHERE action = 'contact.auto_accept' AND created_at >= ?").get(bakuStartIso) as { count: number }).count;
 
       const lastCompletedRun = db.prepare("SELECT * FROM runs WHERE status = 'completed' ORDER BY id DESC LIMIT 1").get() as { id: number; started_at: string; finished_at: string } | undefined;
       let newContactsLastRun = 0;
@@ -513,6 +959,11 @@ export function createRepositories(db: CollectorDatabase) {
         newContacts: newContactsToday,
         newContactsToday,
         newContactsLastRun,
+        websiteContacts: originCounts.website,
+        socialContacts: originCounts.social,
+        whatsappContacts: originCounts.whatsapp,
+        unreviewedContacts,
+        autoAcceptedToday,
         evidence: evidenceTotal,
         evidenceToday,
         enrichedContactsToday,
