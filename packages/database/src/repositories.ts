@@ -5,6 +5,38 @@ const now = () => new Date().toISOString();
 type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'blocked';
 type RunCounters = { pagesChecked: number; phonesFound: number; uniquePhones: number };
 type BinaRunSummary = { outcomes: Record<string, number>; newContacts: number; duplicates: number; agenciesFound?: number };
+export interface DashboardStats {
+  sources: number;
+  runs: number;
+  runsToday: number;
+  successfulRunsToday: number;
+  failedRunsToday: number;
+  contacts: number;
+  newContacts: number;
+  newContactsToday: number;
+  newContactsLastRun: number;
+  evidence: number;
+  evidenceToday: number;
+  enrichedContactsToday: number;
+  errors: number;
+  errorsToday: number;
+  active: number;
+  leads: number;
+  newLeadsToday: number;
+  activeLeads: number;
+  bakuDateIso: string;
+}
+
+export function getBakuStartOfDay(targetDate: Date = new Date()): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Baku',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const [year, month, day] = formatter.format(targetDate).split('-');
+  return new Date(`${year}-${month}-${day}T00:00:00+04:00`).toISOString();
+}
 
 function mapSource(row: Record<string, unknown>) { return { id: row.id as number, name: row.name as string, type: row.type as SourceInput['type'], locator: row.locator as string, language: row.language as SourceInput['language'], maxPages: row.max_pages as number, maxDepth: row.max_depth as number, delayMs: row.delay_ms as number, enabled: Boolean(row.enabled), killSwitch: Boolean(row.kill_switch) }; }
 function mapRun(row: Record<string, unknown>) { return { id: row.id as number, sourceId: row.source_id as number, status: row.status as RunStatus, startedAt: row.started_at as string | null, finishedAt: row.finished_at as string | null, pagesChecked: row.pages_checked as number, phonesFound: row.phones_found as number, uniquePhones: row.unique_phones as number, error: row.error as string | null, cancellationRequested: Boolean(row.cancellation_requested), needsReview: Boolean(row.needs_review) }; }
@@ -435,6 +467,64 @@ export function createRepositories(db: CollectorDatabase) {
       return this.list(filters);
     },
   };
-  const dashboard={stats(){return{sources:(db.prepare('SELECT COUNT(*) count FROM sources').get() as {count:number}).count,runs:(db.prepare('SELECT COUNT(*) count FROM runs').get() as {count:number}).count,contacts:(db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL').get() as {count:number}).count,newContacts:(db.prepare("SELECT COUNT(*) count FROM contacts WHERE first_seen_at>=datetime('now','-1 day')").get() as {count:number}).count,errors:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status='failed'").get() as {count:number}).count,active:(db.prepare("SELECT COUNT(*) count FROM runs WHERE status IN ('queued','running')").get() as {count:number}).count,leads:(db.prepare("SELECT COUNT(*) count FROM leads").get() as {count:number}).count,activeLeads:(db.prepare("SELECT COUNT(*) count FROM leads WHERE status IN ('new','qualified','needs_review')").get() as {count:number}).count};}};
+  const dashboard = {
+    stats(targetDate: Date = new Date()): DashboardStats {
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Baku',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const [year, month, day] = formatter.format(targetDate).split('-');
+      const bakuStartIso = new Date(`${year}-${month}-${day}T00:00:00+04:00`).toISOString();
+
+      const sourcesTotal = (db.prepare('SELECT COUNT(*) count FROM sources').get() as { count: number }).count;
+      const runsTotal = (db.prepare('SELECT COUNT(*) count FROM runs').get() as { count: number }).count;
+      const contactsTotal = (db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL').get() as { count: number }).count;
+      const newContactsToday = (db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL AND first_seen_at >= ?').get(bakuStartIso) as { count: number }).count;
+
+      const lastCompletedRun = db.prepare("SELECT * FROM runs WHERE status = 'completed' ORDER BY id DESC LIMIT 1").get() as { id: number; started_at: string; finished_at: string } | undefined;
+      let newContactsLastRun = 0;
+      if (lastCompletedRun) {
+        newContactsLastRun = (db.prepare('SELECT COUNT(*) count FROM contacts WHERE merged_into_id IS NULL AND first_seen_at >= ? AND first_seen_at <= ?').get(lastCompletedRun.started_at, lastCompletedRun.finished_at || lastCompletedRun.started_at) as { count: number }).count;
+      }
+
+      const evidenceTotal = (db.prepare('SELECT COUNT(*) count FROM evidence').get() as { count: number }).count;
+      const evidenceToday = (db.prepare('SELECT COUNT(*) count FROM evidence WHERE discovered_at >= ?').get(bakuStartIso) as { count: number }).count;
+      const enrichedContactsToday = (db.prepare('SELECT COUNT(DISTINCT contact_id) count FROM evidence WHERE discovered_at >= ? AND contact_id IN (SELECT id FROM contacts WHERE first_seen_at < ?)').get(bakuStartIso, bakuStartIso) as { count: number }).count;
+
+      const leadsTotal = (db.prepare('SELECT COUNT(*) count FROM leads').get() as { count: number }).count;
+      const newLeadsToday = (db.prepare('SELECT COUNT(*) count FROM leads WHERE first_seen_at >= ?').get(bakuStartIso) as { count: number }).count;
+      const activeLeads = (db.prepare("SELECT COUNT(*) count FROM leads WHERE status IN ('new','qualified','needs_review')").get() as { count: number }).count;
+
+      const runsToday = (db.prepare('SELECT COUNT(*) count FROM runs WHERE created_at >= ? OR started_at >= ?').get(bakuStartIso, bakuStartIso) as { count: number }).count;
+      const successfulRunsToday = (db.prepare("SELECT COUNT(*) count FROM runs WHERE status = 'completed' AND (finished_at >= ? OR started_at >= ?)").get(bakuStartIso, bakuStartIso) as { count: number }).count;
+      const failedRunsToday = (db.prepare("SELECT COUNT(*) count FROM runs WHERE status = 'failed' AND (finished_at >= ? OR started_at >= ?)").get(bakuStartIso, bakuStartIso) as { count: number }).count;
+      const activeRuns = (db.prepare("SELECT COUNT(*) count FROM runs WHERE status IN ('queued','running')").get() as { count: number }).count;
+      const errors = (db.prepare("SELECT COUNT(*) count FROM runs WHERE status='failed'").get() as { count: number }).count;
+
+      return {
+        sources: sourcesTotal,
+        runs: runsTotal,
+        runsToday,
+        successfulRunsToday,
+        failedRunsToday,
+        contacts: contactsTotal,
+        newContacts: newContactsToday,
+        newContactsToday,
+        newContactsLastRun,
+        evidence: evidenceTotal,
+        evidenceToday,
+        enrichedContactsToday,
+        errors,
+        errorsToday: failedRunsToday,
+        active: activeRuns,
+        leads: leadsTotal,
+        newLeadsToday,
+        activeLeads,
+        bakuDateIso: bakuStartIso,
+      };
+    },
+  };
   return { sources, keywords, runs, contacts, evidence, reviews, audit, dashboard, binaListings, recipes, checkpoints, leads };
 }

@@ -33,13 +33,13 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
     await expect(page.getByText('1-ч-7-G-U-F')).toBeVisible();
   });
 
-  test('3. Authenticated header controls, logo navigation, and language switching', async ({ page }) => {
+  test('3. Authenticated header controls, logo navigation, and no duplicate sidebar controls', async ({ page }) => {
     await page.goto('/login');
     await page.fill('input[name="password"]', 'smoke-test-password');
     await page.getByRole('button', { name: 'Войти' }).first().click();
     await expect(page).toHaveURL('/');
 
-    // Verify top-right header controls exist
+    // 1. Verify top-right header controls exist
     const header = page.locator('.global-header');
     await expect(header).toBeVisible();
     await expect(header.getByRole('button', { name: 'RU' })).toBeVisible();
@@ -47,7 +47,12 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
     await expect(header.getByRole('button', { name: 'EN' })).toBeVisible();
     await expect(header.getByRole('link', { name: /выйти/i })).toBeVisible();
 
-    // Verify Logo / Brand link navigates to /
+    // 2. Verify sidebar DOES NOT contain duplicate langbar or duplicate logout
+    const sidebar = page.locator('.sidebar');
+    await expect(sidebar.locator('.langbar')).toHaveCount(0);
+    await expect(sidebar.getByRole('link', { name: /выйти/i })).toHaveCount(0);
+
+    // 3. Verify Logo / Brand link navigates to /
     await page.goto('/sources');
     await expect(page).toHaveURL('/sources');
     const logoLink = page.locator('.brand-link');
@@ -139,23 +144,36 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
     }
   });
 
-  test('6. Social connections search modes configuration modal and presets', async ({ page }) => {
+  test('6. Dashboard daily metrics and quick run bulk controls', async ({ page }) => {
     await page.goto('/login');
     await page.fill('input[name="password"]', 'smoke-test-password');
     await page.getByRole('button', { name: 'Войти' }).first().click();
     await expect(page).toHaveURL('/');
 
-    await page.goto('/connections');
-    await expect(page).toHaveURL('/connections');
+    // 1. Verify core metric cards and labels in main content
+    const main = page.getByRole('main');
+    await expect(main.getByText('Риелторы / контакты', { exact: true })).toBeVisible();
+    await expect(main.getByText('Новые риелторы', { exact: true })).toBeVisible();
+    await expect(main.getByText('Всего лидов', { exact: true })).toBeVisible();
+    await expect(main.getByText('Запуски', { exact: true })).toBeVisible();
+    await expect(main.getByText('Ошибки сегодня', { exact: true }).first()).toBeVisible();
 
-    // Verify all 4 social platforms + Telegram exist
-    await expect(page.getByText('Instagram')).toBeVisible();
-    await expect(page.getByText('TikTok')).toBeVisible();
-    await expect(page.getByText('Facebook')).toBeVisible();
-    await expect(page.getByText('WhatsApp', { exact: true })).toBeVisible();
-    await expect(page.getByText('Telegram (MTProto Authorized)')).toBeVisible();
+    // 2. Verify "СЕГОДНЯ" section with Baku localized date
+    await expect(page.getByText('СЕГОДНЯ', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Оперативная статистика за текущий календарный день/i)).toBeVisible();
+    await expect(page.getByText('Новые риелторы сегодня', { exact: true })).toBeVisible();
+    await expect(page.getByText('Новые лиды сегодня', { exact: true })).toBeVisible();
+    await expect(page.getByText('Обогащено контактов', { exact: true })).toBeVisible();
 
-    // Verify WhatsApp Group discovery table
-    await expect(page.getByText('WhatsApp группы')).toBeVisible();
+    // 3. Verify "БЫСТРЫЙ ЗАПУСК" section and buttons
+    await expect(page.getByText('БЫСТРЫЙ ЗАПУСК', { exact: true }).first()).toBeVisible();
+    const startWebsitesBtn = page.getByRole('button', { name: 'Запустить все веб-сайты' });
+    const startSocialBtn = page.getByRole('button', { name: 'Запустить все социальные сети' });
+    await expect(startWebsitesBtn).toBeVisible();
+    await expect(startSocialBtn).toBeVisible();
+
+    // Click "Запустить все веб-сайты" -> triggers bulk run and shows summary
+    await startWebsitesBtn.click();
+    await expect(page.getByText(/Результат:/i).first()).toBeVisible();
   });
 });

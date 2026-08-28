@@ -233,4 +233,64 @@ describe('repositories', () => {
     expect(stats.buyers).toBe(1);
     expect(stats.highConfidence).toBe(1);
   });
+
+  it('calculates persistent daily dashboard metrics with Asia/Baku boundary', () => {
+    const repos = setup();
+    const saved = repos.sources.create(source);
+
+    // 1. Create a contact and run before today
+    const classification = { type: 'agent' as const, confidence: 0.9, reasons: ['agency_name'], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-01T00:00:00.000Z' };
+    const oldContact = repos.contacts.persistEvidence({
+      normalizedPhone: '+994501111111',
+      isForeign: false,
+      evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/old', locationType: 'listing', excerpt: 'Old Makler', rawPhone: '0501111111', platform: 'website', fingerprint: 'old-fp' },
+      classification,
+    });
+    // Manually set old contact firstSeenAt to 2026-08-01
+    db!.prepare('UPDATE contacts SET first_seen_at=? WHERE id=?').run('2026-08-01T00:00:00.000Z', oldContact.id);
+
+    // 2. Create a new contact today
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994502222222',
+      isForeign: false,
+      evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/new', locationType: 'listing', excerpt: 'New Makler', rawPhone: '0502222222', platform: 'website', fingerprint: 'new-fp' },
+      classification,
+    });
+
+    // 3. Enrich the old contact today with new evidence
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994501111111',
+      isForeign: false,
+      evidence: { sourceId: saved.id, sourceUrl: 'https://example.com/enrich', locationType: 'listing', excerpt: 'Enriched Makler', rawPhone: '0501111111', platform: 'website', fingerprint: 'enrich-fp' },
+      classification,
+    });
+
+    // 4. Create a completed run today
+    const run = repos.runs.enqueue(saved.id);
+    repos.runs.claimNext();
+    repos.runs.finish(run.id, 'completed', { pagesChecked: 5, phonesFound: 2, uniquePhones: 2 });
+
+    // 5. Create a lead today
+    repos.leads.create({
+      leadType: 'buyer',
+      status: 'new',
+      sourcePlatform: 'telegram',
+      sourceSurface: 'post',
+      sourceUrl: 'https://t.me/baku/1',
+      intentExcerpt: 'Axtariram',
+      confidence: 0.8,
+      confidenceLevel: 'high',
+    });
+
+    const dashStats = repos.dashboard.stats();
+    expect(dashStats.contacts).toBe(2);
+    expect(dashStats.newContactsToday).toBe(1);
+    expect(dashStats.enrichedContactsToday).toBe(1);
+    expect(dashStats.leads).toBe(1);
+    expect(dashStats.newLeadsToday).toBe(1);
+    expect(dashStats.runsToday).toBe(1);
+    expect(dashStats.successfulRunsToday).toBe(1);
+    expect(dashStats.failedRunsToday).toBe(0);
+    expect(dashStats.bakuDateIso).toContain('T');
+  });
 });

@@ -48,10 +48,6 @@ export default async function Layout({ children }: { children: React.ReactNode }
                   </Link>
                 ))}
               </nav>
-              <div className="langbar">
-                <LangSwitcher lang={lang} />
-                <a href="/api/logout">{t(lang, 'common.logout')}</a>
-              </div>
             </aside>
             <main>
               <header className="global-header">
