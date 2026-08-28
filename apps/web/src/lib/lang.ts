@@ -5,5 +5,8 @@ export const LANG_COOKIE = 'lang';
 
 export async function getLang(): Promise<Lang> {
   const jar = await cookies();
-  return jar.get(LANG_COOKIE)?.value === 'az' ? 'az' : 'ru';
+  const val = jar.get(LANG_COOKIE)?.value;
+  if (val === 'az') return 'az';
+  if (val === 'en') return 'en';
+  return 'ru';
 }

@@ -21,4 +21,5 @@ export * from './tiktok';
 export * from './types';
 export * from './unvan';
 export * from './vipemlak';
+export * from './whatsapp-authorized';
 export * from './yeniemlak';

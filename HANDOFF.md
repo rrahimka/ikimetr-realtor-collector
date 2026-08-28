@@ -1,84 +1,68 @@
-# Handoff — Sources Page UX Simplification & Sticky Navigation Complete
+# Handoff — Social Account Connections & WhatsApp Group Discovery Complete
 
 ## Repository state
 
 - Branch: `feature/bina-agency-pilot`
 - Verification suite (all exit 0):
-  - `pnpm test` — **457/457 tests pass across 48 test suites**
+  - `pnpm test` — **471/471 tests pass across 51 test suites**
   - `pnpm typecheck` — clean (5 of 5 workspace packages)
   - `pnpm lint` — clean (0 errors, 0 warnings)
-  - `pnpm build` — clean Next.js 16.3 app + worker builds (including `/contacts`, `/leads`, `/leads/[id]`, `/runs`, `/review`, `/sources`, `/api/contacts/export`, `/api/leads/export`)
+  - `pnpm build` — clean Next.js 16.3 app + worker builds (including `/login`, `/connections`, `/contacts`, `/leads`, `/leads/[id]`, `/runs`, `/review`, `/sources`, `/api/connections`, `/api/connections/[platform]/search-config`, `/api/connections/whatsapp/groups`, `/api/contacts/export`, `/api/leads/export`)
   - `pnpm test:smoke` — 2/2 end-to-end scenarios pass (`collector pipeline: login → fixture source → run → worker → contact → CSV` and `language toggle and CSV import report`)
   - `git diff --check` — clean (no trailing whitespace or conflict markers)
-- Verified Databases:
+- Verified Databases & State:
   - Realtor Intelligence Pipeline: 779 canonical realtors intact in database with all evidence records.
   - Client Lead Intelligence Pipeline: 15 verified lead records intact in database.
   - Sources Pipeline: 18 active/configured sources.
   - Runs Pipeline: 163 completed/audited run records.
-  - UI Enhancements:
-    - Global Sticky Sidebar on desktop (`position: sticky; top: 0; height: 100vh`) with independent content scroll and clickable `IKIMETR COLLECTOR` logo link to `/`.
-    - Simplified Add Source Form: 5 non-technical fields (Category: Веб-сайт / Социальная сеть, Platform, URL / Locator, Language, Delay in seconds).
-    - Auto-Derived Display Names: `Bina.az`, `Telegram — @handle`, `Instagram — @user`, `TikTok — @user`, `Facebook — page`.
-    - Category Filter Tabs on Sources Page: `Все`, `Веб-сайты`, `Социальные сети` with live item counts.
-    - Clickable Source URLs: External link icon `↗` opening original source safely in new tab (`target="_blank" rel="noopener noreferrer"`). Plain queries remain plain text.
-    - Safe Start/Stop Controls: Operational `[ Запустить ]` and `[ Остановить ]` buttons with pending states. Ordinary table rows no longer show red emergency kill buttons.
-    - Centralized Limit Cap: `DEFAULT_MAX_ITEMS_PER_RUN = 50`.
+  - Telegram Authorized MTProto Connector: Preserved and prominent in connections UI.
 
 ---
 
-## Azerbaijan Portal Coverage & Release Matrix (24 Sources)
+## Key Features & Enhancements Added
 
-| Domain | Status | Connector | Discovery Method | Phone Extraction | Seller Classification |
-|---|---|---|---|---|---|
-| `bina.az` | `SUPPORTED_VERIFIED` | `bina_agency` | Playwright + Robots Sitemap | Dynamic reveal (`.show-phones`, click guard) | `Agentlik`, `Vasitəçi` vs `Mülkiyyətçi` skip |
-| `tap.az` | `SUPPORTED_VERIFIED` | `tap_az` | Cheerio HTTP | Text regex + tel link (hotline filter `+994125261919`) | `Mağaza`, `Vasitəçi` vs `Mülkiyyətçi` skip |
-| `arenda.az` | `SUPPORTED_VERIFIED` | `arenda_az` | Cheerio HTTP | Text regex + tel link (hotline filter `+994705962424`) | `Agentlik` vs `Əmlak sahibi` skip |
-| `yeniemlak.az` | `SUPPORTED_VERIFIED` | `yeniemlak_az` | Cheerio HTTP | `<img src="/tel-show/...">` + tel links + text | `Vasitəçi / Rieltor`, `Əmlak agentliyi` vs `Mülkiyyətçi` skip |
-| `emlakbazari.az` | `SUPPORTED_VERIFIED` | `emlakbazari_az` | Cheerio HTTP | `a[href^="tel:"]` (hotline filter `+994508395158`) | `.property-author__position`, `.agency-badge` vs `Mülkiyyətçi` skip |
-| `ipoteka.az` | `SUPPORTED_VERIFIED` | `ipoteka_az` | Cheerio HTTP | Contact block text regex + tel links | `( Vasitəçi )`, `( Agentlik )` vs `( Mülkiyyətçi )` skip |
-| `city.az` | `SUPPORTED_VERIFIED` | `city_az` | Cheerio HTTP | `a[href^="tel:"]` (hotline filter `+994502544544`) | Item author block vs `Mülkiyyətçi` skip |
-| `vipemlak.az` | `SUPPORTED_VERIFIED` | `vipemlak_az` | Cheerio HTTP | Session-preserved AJAX reveal (`/ajax.php?act=telshow`) | `(Bütün Elanları)`, `Vasitəçi`, `Agentlik` vs `Sahibi` skip |
-| `ev10.az` | `SUPPORTED_VERIFIED` | `ev10_az` | REST API | Official backend REST API (`/api/v1/postings/<id>`) | `is_agent: boolean` + description check, hotline filter (`+994554312159`) |
-| `lalafo.az` | `SUPPORTED_VERIFIED` | `lalafo_az` | Cheerio HTTP (Next.js) | Structured `detail` query mobile phone in `#__NEXT_DATA__` | `Təklifin növü` (`Vasitəçi`/`Agentlik`), `user.pro`, `user.business` vs `Mülkiyyətçi` skip |
-| `unvan.az` | `SUPPORTED_VERIFIED` | `unvan_az` | Cheerio HTTP | Session-preserved AJAX reveal (`/ajax.php?act=telshow`) | `(Bütün Elanları)`, `Vasitəçi`, `Agentlik` vs `Sahibi` skip; real estate category filter |
-| `kub.az` | `PROTECTED` | — | — | Cloudflare challenge protection | Protected |
-| `mertebe.az` | `PROTECTED` | — | — | Cloudflare challenge protection | Protected |
-| `emlak.az` | `PROTECTED` | — | — | Cloudflare HTTP 403 protection | Protected |
-| `evler.az` | `PROTECTED` | — | — | HTTP 403 protection | Protected |
-| `binalar.az` | `AGGREGATOR` | — | — | Aggregator re-publishing listings | Aggregator |
-| `binatap.az` | `AGGREGATOR` | — | — | Aggregator re-publishing listings | Aggregator |
-| `stop.az` | `DEAD` | `stop_az` | — | Domain unreachable / offline | Dead domain handler |
-| `ucuzemlak.az` | `DEAD` | — | — | Domain offline / DNS failure | Dead |
-| `menzil.az` | `DEAD` | — | — | Repurposed to website builder | Dead |
-| `kupca.az` | `DEAD` | — | — | Domain parking page | Dead |
-| `rahathome.az` | `DEAD` | — | — | Domain offline / DNS failure | Dead |
-| `kiraye.az` | `DEAD` | — | — | Domain offline / DNS failure | Dead |
-| `dasinmazemlak.az` | `DEAD` | — | — | SSL certificate error (HTTP 526) | Dead |
+### 1. Login Page First & UX Refinement
+- **Secure Password Reveal**: Accessible eye icon toggle button with `aria-label` ("Показать пароль" / "Скрыть пароль") allowing users to view entered password.
+- **Memory Hint**: "Забыли пароль?" button revealing non-secret hint `1-ч-7-G-U-F` only on explicit click.
+- **Login Rate Limiting**: In-memory rate limiter (10 attempts per 60s per IP) on `/api/login`, returning HTTP 429 and localized retry notice if exceeded.
+- **Unauthenticated View Isolation**: Layout hides internal navigation links (Dashboard, Contacts, Leads, Sources, Runs, Review) from unauthenticated users.
+
+### 2. Language Switcher & Logout
+- **Segmented Switcher**: Segmented `[ RU | AZ | EN ]` control with active highlight and persistence via cookie and `/api/lang`.
+- **Default Language**: Russian (`ru`) as default, with full Russian, Azerbaijani, and English translations.
+- **Global Header Logout**: `[ Выйти ]` button in global header calling `/api/logout` to terminate the session and redirect to `/login` without touching the database.
+
+### 3. Social Account Connections (`/connections`)
+- **Connection Cards**: Dedicated UI cards for Instagram, TikTok, Facebook, and WhatsApp.
+- **Connection Lifecycle**: `disconnected` -> `connecting` -> `connected` -> `reauth_required`.
+- **Human Auth Flow**: QR code modal / confirmation modal for platforms requiring user authorization.
+- **Data Safety on Disconnect**: Revoking/disconnecting removes auth tokens while preserving all previously collected contacts and leads.
+- **Telegram Connector Preservation**: Dedicated banner card confirming active MTProto connector status.
+
+### 4. Social Search Modes & Safe Presets
+- **Granular Surfaces**: Selectable checkboxes for username, bio/about, post captions, comments, hashtags, geo/location, agency name, and phone cross-match.
+- **Search Purpose**: Purpose selection (`Риелторы`, `Клиенты`, `Оба варианта`).
+- **Maximum Safe Search Preset**: `[ Максимальный безопасный поиск ]` one-click preset activating platform-safe search parameters.
+
+### 5. WhatsApp Authorized Source & Group Discovery
+- **Group Management Table**: Displays authorized WhatsApp groups, participant counts, and last activity timestamps.
+- **Explicit Consent Confirmation**: Modal requiring explicit user confirmation before granting group search permission.
+- **Realtor-Only Group Mode**: Dedicated toggle with automated context validation (`isRealtorGroupContext`) ensuring only verified realtor chats are indexed for participant realtors.
+- **Privacy Boundary**:
+  - 0 private 1-on-1 direct messages scanned or processed.
+  - 0 unapproved/unconsented groups scanned.
+  - 0 hidden or masked phone numbers fabricated.
+  - Lead intent classification (`BUYER`, `SELLER`, `RENTER`, `LANDLORD`, `INVESTOR`, `REALTOR_REQUEST`).
 
 ---
 
-## Key Improvements Added
+## Verified Commands
 
-1. **4 Priority Connectors Added (`VIPemlak`, `Ev10`, `Lalafo`, `Unvan`)**:
-   - `packages/connectors/src/vipemlak.ts` + `vipemlak.test.ts` (Cheerio HTTP with AJAX phone reveal)
-   - `packages/connectors/src/ev10.ts` + `ev10.test.ts` (REST API with explicit `is_agent` field)
-   - `packages/connectors/src/lalafo.ts` + `lalafo.test.ts` (Next.js query data extraction with strict pro/agency filter)
-   - `packages/connectors/src/unvan.ts` + `unvan.test.ts` (Cheerio HTTP with AJAX phone reveal and real estate category verification)
-
-2. **Core Contracts & Source Registry Expansion**:
-   - Added `'vipemlak_az' | 'ev10_az' | 'lalafo_az' | 'unvan_az'` to `SOURCE_TYPES` in `packages/core/src/contracts.ts` and `detectSourceTypeFromUrl`.
-   - Updated `packages/core/src/source-registry.ts` and `source-registry.test.ts` (11 `SUPPORTED_VERIFIED`, 4 `PROTECTED`, 2 `AGGREGATOR`, 7 `DEAD`).
-
-3. **Worker Runner & Legacy Source Auto-Routing**:
-   - Updated `apps/worker/src/connectors.ts` to dispatch all 11 verified connectors.
-   - Added legacy source auto-routing for `vipemlak.az`, `ev10.az`, `lalafo.az`, and `unvan.az`.
-   - Full worker test coverage in `apps/worker/src/worker.test.ts`.
-
-4. **Database Migration & Client Integrity**:
-   - Added Drizzle migration `packages/database/drizzle/0006_expand_tier_b_sources.sql` (`user_version = 6`).
-   - Updated `packages/database/src/client.ts` and `client.test.ts`.
-
-5. **Web UI & Localization**:
-   - Added all new source types to `apps/web/src/components/source-form.tsx` (dropdown selector, URL auto-detection, default limits).
-   - Added source type display labels and status badges in `apps/web/src/app/sources/page.tsx`.
-   - Added complete Russian and Azerbaijani translations in `apps/web/src/lib/i18n.ts` and verified in `i18n.test.ts`.
+```bash
+pnpm test
+pnpm typecheck
+pnpm lint
+pnpm build
+pnpm test:smoke
+git diff --check
+```

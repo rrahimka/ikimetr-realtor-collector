@@ -9,16 +9,23 @@ describe('i18n', () => {
     expect(t('ru', 'detail.colPlatform')).toBe('Платформа');
   });
 
-  it('translates essential actions to Azerbaijani', () => {
+  it('translates essential actions to Azerbaijani and English', () => {
     expect(t('az', 'login.submit')).toBe('Daxil ol');
     expect(t('az', 'nav.contacts')).toBe('Əlaqələr');
     expect(t('az', 'contacts.csvExport')).toBe('Siyahını ixrac et');
     expect(t('az', 'import.submit')).toBe('İdxal et');
     expect(t('az', 'common.logout')).toBe('Çıxış');
+
+    expect(t('en', 'login.submit')).toBe('Sign in');
+    expect(t('en', 'nav.contacts')).toBe('Contacts');
+    expect(t('en', 'contacts.csvExport')).toBe('Export list');
+    expect(t('en', 'common.logout')).toBe('Logout');
   });
 
-  it('falls back to Russian for an unknown language', () => {
-    expect(t('en', 'nav.contacts')).toBe('Контакты');
+  it('supports non-secret memory hint across all locales', () => {
+    expect(t('ru', 'login.hintText')).toBe('1-ч-7-G-U-F');
+    expect(t('az', 'login.hintText')).toBe('1-ч-7-G-U-F');
+    expect(t('en', 'login.hintText')).toBe('1-ч-7-G-U-F');
   });
 
   it('returns an unknown key unchanged', () => {
@@ -28,6 +35,7 @@ describe('i18n', () => {
   it('localises enum labels', () => {
     expect(tEnum('az', 'status', 'verified')).toBe('təsdiqləndi');
     expect(tEnum('ru', 'run', 'completed')).toBe('завершено');
+    expect(tEnum('en', 'run', 'completed')).toBe('completed');
     expect(tEnum('az', 'type', 'agency')).toBe('agentlik');
     expect(tEnum('ru', 'run', 'blocked')).toBe('заблокировано');
     expect(tEnum('az', 'run', 'blocked')).toBe('bloklandı');
@@ -43,6 +51,20 @@ describe('i18n', () => {
       expect(t('ru', key)).not.toBe(key);
       expect(t('az', key)).not.toBe(key);
     }
+  });
+
+  it('localises social connection and WhatsApp labels', () => {
+    expect(t('ru', 'connections.title')).toBe('Подключения и социальные сети');
+    expect(t('az', 'connections.title')).toBe('Qoşulmalar və sosial şəbəkələr');
+    expect(t('en', 'connections.title')).toBe('Connections & Social Networks');
+
+    expect(t('ru', 'connections.statusConnected')).toBe('✓ Подключено');
+    expect(t('az', 'connections.statusConnected')).toBe('✓ Qoşulub');
+    expect(t('en', 'connections.statusConnected')).toBe('✓ Connected');
+
+    expect(t('ru', 'whatsapp.title')).toBe('WhatsApp группы');
+    expect(t('az', 'whatsapp.title')).toBe('WhatsApp qrupları');
+    expect(t('en', 'whatsapp.title')).toBe('WhatsApp Groups');
   });
 
   it('localises every classification reason emitted by the classifier', () => {

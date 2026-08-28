@@ -68,18 +68,18 @@ test('collector pipeline: login → fixture source → run → worker → contac
   await expect(page).toHaveURL(/\/login/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Realtor Collector');
   await page.fill('input[name="password"]', 'wrong-password');
-  await page.getByRole('button', { name: 'Войти' }).click();
+  await page.getByRole('button', { name: 'Войти' }).first().click();
   await expect(page).toHaveURL(/\/login/);
   await expect(page.getByText('Неверный пароль или не настроен env')).toBeVisible();
   await page.fill('input[name="password"]', 'smoke-test-password');
-  await page.getByRole('button', { name: 'Войти' }).click();
+  await page.getByRole('button', { name: 'Войти' }).first().click();
   try {
     await expect(page).toHaveURL('/', { timeout: 15_000 });
   } catch {
     // A cold Next.js dev compile can reset the first request once; retry only
     // after the page is confirmed to still be on the login form.
     await expect(page).toHaveURL(/\/login/);
-    await page.getByRole('button', { name: 'Войти' }).click();
+    await page.getByRole('button', { name: 'Войти' }).first().click();
     await expect(page).toHaveURL('/');
   }
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');
@@ -226,16 +226,16 @@ test('collector pipeline: login → fixture source → run → worker → contac
 test('language toggle and CSV import report', async ({ page }) => {
   await page.goto('/login');
   await page.fill('input[name="password"]', 'smoke-test-password');
-  await page.getByRole('button', { name: 'Войти' }).click();
+  await page.getByRole('button', { name: 'Войти' }).first().click();
   await expect(page).toHaveURL('/');
 
   // Switch to Azerbaijani, verify persistence after reload, then switch back.
-  await page.getByRole('button', { name: 'AZ' }).click();
+  await page.getByRole('button', { name: 'AZ' }).first().click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('İdarəetmə paneli');
   await expect(page.getByRole('link', { name: 'Əlaqələr' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('İdarəetmə paneli');
-  await page.getByRole('button', { name: 'RU' }).click();
+  await page.getByRole('button', { name: 'RU' }).first().click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');
   await page.reload();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');

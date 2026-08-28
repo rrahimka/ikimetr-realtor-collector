@@ -6,3 +6,4 @@ export * from './phones';
 export * from './search-intelligence';
 export * from './source-registry';
 export * from './source-links';
+export * from './social-connections';

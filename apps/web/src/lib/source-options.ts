@@ -398,3 +398,153 @@ export function getSourceTypeLabel(type: string, lang: Lang): string {
   if (type === 'website') return t(lang, 'sourceType.website');
   return type;
 }
+
+export type SocialPlatform = 'instagram' | 'tiktok' | 'facebook' | 'whatsapp';
+
+export type ConnectionStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'error'
+  | 'reauth_required';
+
+export type SearchSurfaceMode =
+  | 'name_username'
+  | 'bio_about'
+  | 'posts_captions'
+  | 'comments'
+  | 'hashtags'
+  | 'geo_keywords'
+  | 'agency_name'
+  | 'phone_crossmatch';
+
+export type SearchPurpose = 'realtors' | 'leads' | 'both';
+
+export const ALL_SEARCH_SURFACES: { id: SearchSurfaceMode; labelKey: string }[] = [
+  { id: 'name_username', labelKey: 'searchMode.nameUsername' },
+  { id: 'bio_about', labelKey: 'searchMode.bioAbout' },
+  { id: 'posts_captions', labelKey: 'searchMode.postsCaptions' },
+  { id: 'comments', labelKey: 'searchMode.comments' },
+  { id: 'hashtags', labelKey: 'searchMode.hashtags' },
+  { id: 'geo_keywords', labelKey: 'searchMode.geoKeywords' },
+  { id: 'agency_name', labelKey: 'searchMode.agencyName' },
+  { id: 'phone_crossmatch', labelKey: 'searchMode.phoneCrossmatch' },
+];
+
+export function getPlatformSupportedSurfaces(platform: SocialPlatform): SearchSurfaceMode[] {
+  switch (platform) {
+    case 'instagram':
+      return [
+        'name_username',
+        'bio_about',
+        'posts_captions',
+        'comments',
+        'hashtags',
+        'geo_keywords',
+        'agency_name',
+        'phone_crossmatch',
+      ];
+    case 'tiktok':
+      return [
+        'name_username',
+        'bio_about',
+        'posts_captions',
+        'comments',
+        'hashtags',
+        'geo_keywords',
+        'agency_name',
+      ];
+    case 'facebook':
+      return [
+        'name_username',
+        'bio_about',
+        'posts_captions',
+        'comments',
+        'geo_keywords',
+        'agency_name',
+        'phone_crossmatch',
+      ];
+    case 'whatsapp':
+      return [
+        'name_username',
+        'bio_about',
+        'posts_captions',
+        'comments',
+        'phone_crossmatch',
+      ];
+  }
+}
+
+export function getMaxSafePresetSurfaces(platform: SocialPlatform): SearchSurfaceMode[] {
+  switch (platform) {
+    case 'instagram':
+      return ['name_username', 'bio_about', 'posts_captions', 'comments', 'hashtags', 'geo_keywords', 'agency_name'];
+    case 'tiktok':
+      return ['name_username', 'bio_about', 'posts_captions', 'comments', 'hashtags', 'geo_keywords'];
+    case 'facebook':
+      return ['name_username', 'bio_about', 'posts_captions', 'comments', 'geo_keywords', 'agency_name'];
+    case 'whatsapp':
+      return ['name_username', 'bio_about', 'posts_captions', 'comments'];
+  }
+}
+
+export interface SocialAccountConnection {
+  platform: SocialPlatform;
+  status: ConnectionStatus;
+  accountHandle?: string | undefined;
+  accountName?: string | undefined;
+  enabledSurfaces: SearchSurfaceMode[];
+  purpose: SearchPurpose;
+  maxSafePreset: boolean;
+  humanAuthRequired?: boolean | undefined;
+  humanAuthType?: 'qr' | 'otp' | 'device_confirmation' | 'browser' | undefined;
+  humanAuthPrompt?: string | undefined;
+  qrCodeData?: string | undefined;
+  connectedAt?: string | undefined;
+  lastScannedAt?: string | undefined;
+  errorMessage?: string | undefined;
+}
+
+export interface WhatsAppGroupData {
+  id: string;
+  name: string;
+  description?: string | undefined;
+  participantCount?: number | undefined;
+  lastActivity?: string | undefined;
+  status: 'active' | 'inactive';
+  authorized: boolean;
+  authorizedAt?: string | undefined;
+  isRealtorOnlyGroup: boolean;
+  searchMode: SearchPurpose;
+}
+
+export function isRealtorGroupContext(title: string, description?: string): boolean {
+  const combined = `${title || ''} ${description || ''}`.toLowerCase();
+  const isGenericChat =
+    combined.includes('elan bazar') ||
+    combined.includes('ucuzluq') ||
+    combined.includes('alqi satqi her sey') ||
+    combined.includes('hər şey') ||
+    combined.includes('avto') ||
+    combined.includes('telefon') ||
+    combined.includes('geyimlər') ||
+    combined.includes('baku chat') ||
+    combined.includes('sohbet');
+
+  if (isGenericChat && !combined.includes('makler') && !combined.includes('rieltor') && !combined.includes('əmlak agent')) {
+    return false;
+  }
+
+  return (
+    combined.includes('makler') ||
+    combined.includes('rieltor') ||
+    combined.includes('realtor') ||
+    combined.includes('əmlak agent') ||
+    combined.includes('emlak agent') ||
+    combined.includes('dasinmaz emlak makler') ||
+    combined.includes('daşınmaz əmlak makler') ||
+    combined.includes('baku real estate agents') ||
+    combined.includes('agentlikleri') ||
+    combined.includes('agentlikləri')
+  );
+}
