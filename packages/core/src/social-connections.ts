@@ -125,6 +125,8 @@ export interface SocialAccountConnection {
   connectedAt?: string | undefined;
   lastScannedAt?: string | undefined;
   errorMessage?: string | undefined;
+  /** Server-only: Telegram MTProto session string. Never exposed to frontend. */
+  sessionString?: string | undefined;
 }
 
 export interface WhatsAppGroupData {

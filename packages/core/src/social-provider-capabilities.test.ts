@@ -29,8 +29,8 @@ describe('social-provider-capabilities', () => {
     }
   });
 
-  it('marks telegram as architecture_ready (no MTProto client installed)', () => {
-    expect(getProviderProfile('telegram').status).toBe('architecture_ready');
+  it('marks telegram as real with MTProto client installed', () => {
+    expect(getProviderProfile('telegram').status).toBe('real');
     expect(getProviderProfile('telegram').authMethod).toBe('mtproto');
     expect(['instagram', 'tiktok', 'facebook', 'whatsapp'].every((p) => getProviderProfile(p as never).status === 'architecture_ready')).toBe(true);
   });
@@ -48,7 +48,6 @@ describe('social-provider-capabilities', () => {
     const filled = {
       TELEGRAM_API_ID: '1',
       TELEGRAM_API_HASH: 'h',
-      TELEGRAM_SESSION_STRING: 's',
     } as NodeJS.ProcessEnv;
     expect(isProviderConfigured(getProviderProfile('telegram'), filled)).toBe(true);
   });

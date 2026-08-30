@@ -118,9 +118,9 @@ export const PROVIDER_REGISTRY: Record<SocialPlatform, ProviderProfile> = {
   telegram: {
     platform: 'telegram',
     displayName: 'Telegram',
-    status: 'architecture_ready',
+    status: 'real',
     authMethod: 'mtproto',
-    requiredEnv: ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING'],
+    requiredEnv: ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH'],
     supportedCapabilities: [
       'channel_scan',
       'supergroup_scan',
@@ -129,9 +129,10 @@ export const PROVIDER_REGISTRY: Record<SocialPlatform, ProviderProfile> = {
     unsupportedCapabilities: [],
     notes:
       'MTProto (api_id/api_hash/session) is the official Telegram client API. ' +
+      'A real MTProto client implementation exists with full session persistence, ' +
+      'OTP/2FA flows, dialog enumeration, and message fetching. ' +
       'Message processing and lead extraction logic is implemented and tested. ' +
-      'No actual MTProto client library is installed \u2014 the connection layer does not exist yet. ' +
-      'A live session requires a MTProto client implementation plus user-supplied credentials (never bundled).',
+      'A live session requires user-supplied api_id/api_hash (never bundled).',
   },
   whatsapp: {
     platform: 'whatsapp',

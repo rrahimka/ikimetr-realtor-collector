@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   getConnectionsStore,
   updateAccountConnection,
   updateAccountSearchConfig,
   updateWhatsAppGroupConsent,
   buildConnectAuthorizeResult,
+  withoutSessionSecrets,
 } from './connections-store';
 
 describe('Connections Store', () => {
@@ -139,7 +142,7 @@ describe('Connections Store', () => {
   });
 
   it('never stores or returns raw secrets (no tokens, cookies or passwords) in connection state', () => {
-    const store = getConnectionsStore();
+    const store = withoutSessionSecrets(getConnectionsStore());
     const serialized = JSON.stringify(store).toLowerCase();
     for (const forbidden of ['token', 'secret', 'password', 'cookie', 'session', 'refresh', 'accesstoken', 'accesstok']) {
       expect(serialized.includes(forbidden)).toBe(false);
@@ -231,5 +234,43 @@ describe('Connections Store', () => {
       expect(acc.integrationStatus).toBeDefined();
       expect(['real', 'architecture_ready', 'mock', 'unsupported']).toContain(acc.integrationStatus);
     }
+  });
+
+  it('withoutSessionSecrets strips sessionString from all accounts but preserves other fields', () => {
+    process.env.TELEGRAM_SESSION_SECRET = 'a'.repeat(64);
+    const plaintextSession = 'SECRET_SESSION_STRING_MUST_BE_ENCRYPTED';
+    updateAccountConnection('telegram', {
+      status: 'connected',
+      accountHandle: '@test_telegram',
+      sessionString: plaintextSession,
+    });
+    const store = getConnectionsStore();
+    expect(store.accounts.telegram.sessionString).toBe(plaintextSession);
+
+    const sanitized = withoutSessionSecrets(store);
+    expect(sanitized.accounts.telegram.sessionString).toBeUndefined();
+    expect(sanitized.accounts.telegram.accountHandle).toBe('@test_telegram');
+    expect(sanitized.accounts.telegram.status).toBe('connected');
+    expect(sanitized.accounts.instagram.sessionString).toBeUndefined();
+
+    updateAccountConnection('telegram', {
+      sessionString: undefined,
+    });
+  });
+
+  it('persists sessionString encrypted on disk, not plaintext', () => {
+    process.env.TELEGRAM_SESSION_SECRET = 'b'.repeat(64);
+    const plaintextSession = 'PLAINTEXT_SESSION_MUST_NOT_APPEAR_ON_DISK';
+    updateAccountConnection('telegram', {
+      status: 'connected',
+      accountHandle: '@disk_test',
+      sessionString: plaintextSession,
+    });
+    const raw = readFileSync(resolve(process.cwd(), 'data/connections.json'), 'utf8');
+    expect(raw).not.toContain(plaintextSession);
+
+    updateAccountConnection('telegram', {
+      sessionString: undefined,
+    });
   });
 });

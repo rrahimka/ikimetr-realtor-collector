@@ -1,4 +1,4 @@
-import { getConnectionsStore } from '../../lib/connections-store';
+import { getConnectionsStore, withoutSessionSecrets } from '../../lib/connections-store';
 import { getLang } from '../../lib/lang';
 import { t } from '../../lib/i18n';
 import { SocialConnectionsPanel } from '../../components/social-connections-panel';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function ConnectionsPage() {
   const lang = await getLang();
-  const store = getConnectionsStore();
+  const store = withoutSessionSecrets(getConnectionsStore());
 
   return (
     <>

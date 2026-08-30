@@ -17,6 +17,7 @@ export * from './stop';
 export * from './tap';
 export * from './telegram';
 export * from './telegram-authorized';
+export * from './telegram-mtproto';
 export * from './tiktok';
 export * from './types';
 export * from './unvan';

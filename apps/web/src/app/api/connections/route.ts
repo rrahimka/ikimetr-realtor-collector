@@ -4,14 +4,16 @@ import {
   getConnectionsStore,
   updateAccountConnection,
   buildConnectAuthorizeResult,
+  withoutSessionSecrets,
 } from '../../../lib/connections-store';
+import { clearAuthState } from '../../../lib/telegram-session';
 import { apiError, requireApi } from '../../../lib/http';
 
 export async function GET() {
   try {
     await requireApi();
     const store = getConnectionsStore();
-    return NextResponse.json(store);
+    return NextResponse.json(withoutSessionSecrets(store));
   } catch (error) {
     return apiError(error);
   }
@@ -29,11 +31,15 @@ export async function POST(request: Request) {
     const body = actionSchema.parse(await request.json());
 
     if (body.action === 'disconnect') {
+      if (body.platform === 'telegram') {
+        await clearAuthState();
+      }
       const updated = updateAccountConnection(body.platform, {
         status: 'disconnected',
         accountHandle: undefined,
         humanAuthRequired: false,
         qrCodeData: undefined,
+        sessionString: body.platform === 'telegram' ? undefined : undefined,
       });
       return NextResponse.json({ ok: true, account: updated });
     }
@@ -70,13 +76,18 @@ export async function POST(request: Request) {
         const updated = updateAccountConnection(body.platform, {
           status: 'connecting',
           humanAuthRequired: true,
-          humanAuthType: 'device_confirmation',
-          humanAuthPrompt: 'Authorize the Telegram MTProto session on your device to begin scanning.',
+          humanAuthType: 'otp',
+          humanAuthPrompt: 'Enter your Telegram phone number to begin authorization.',
           accountHandle: undefined,
           connectedAt: undefined,
           errorMessage: undefined,
         });
-        return NextResponse.json({ ok: true, account: updated });
+        return NextResponse.json({
+          ok: true,
+          account: updated,
+          authEndpoint: '/api/connections/telegram/auth',
+          message: 'Use /api/connections/telegram/auth to complete Telegram authorization.',
+        });
       }
       // needs_credentials: report honestly, do not fake a connection.
       const updated = updateAccountConnection(body.platform, {
@@ -116,9 +127,8 @@ export async function POST(request: Request) {
 
     if (body.action === 'switch_account') {
       // Switching account: revoke the old session and enter connecting state.
-      // For WhatsApp, re-enter the QR auth flow. For others, re-enter the
-      // confirmation flow. The old session is effectively revoked by
-      // clearing the handle; a new connect flow must be completed.
+      // For WhatsApp, re-enter the QR auth flow. For Telegram, re-enter the
+      // OTP auth flow. For others, re-enter the confirmation flow.
       if (body.platform === 'whatsapp') {
         const updated = updateAccountConnection(body.platform, {
           status: 'connecting',
@@ -131,7 +141,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true, account: updated });
       }
 
-      // For Instagram/TikTok/Facebook/Telegram: enter connecting state.
+      if (body.platform === 'telegram') {
+        await clearAuthState();
+        const updated = updateAccountConnection(body.platform, {
+          status: 'connecting',
+          accountHandle: undefined,
+          humanAuthRequired: true,
+          humanAuthType: 'otp',
+          humanAuthPrompt: 'Enter your Telegram phone number to begin authorization.',
+          sessionString: undefined,
+        });
+        return NextResponse.json({ ok: true, account: updated });
+      }
+
+      // For Instagram/TikTok/Facebook: enter connecting state.
       const updated = updateAccountConnection(body.platform, {
         status: 'connecting',
         accountHandle: undefined,

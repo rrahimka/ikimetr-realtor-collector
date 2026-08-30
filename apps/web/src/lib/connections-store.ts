@@ -12,6 +12,7 @@ import {
   buildOAuthAuthorizeUrl,
   generatePkcePair,
 } from '@ikimetr/core';
+import { decryptSecret, encryptSecret } from './secret-storage';
 
 export interface ConnectionsState {
   accounts: Record<SocialPlatform, SocialAccountConnection>;
@@ -108,13 +109,30 @@ export function getConnectionsStore(): ConnectionsState {
     if (existsSync(STORE_PATH)) {
       const raw = readFileSync(STORE_PATH, 'utf8');
       const parsed = JSON.parse(raw) as ConnectionsState;
+      const accounts: Record<SocialPlatform, SocialAccountConnection> = {
+        instagram: { ...DEFAULT_STATE.accounts.instagram },
+        tiktok: { ...DEFAULT_STATE.accounts.tiktok },
+        facebook: { ...DEFAULT_STATE.accounts.facebook },
+        whatsapp: { ...DEFAULT_STATE.accounts.whatsapp },
+        telegram: { ...DEFAULT_STATE.accounts.telegram },
+      };
+      for (const [k, v] of Object.entries({ ...DEFAULT_STATE.accounts, ...parsed.accounts })) {
+        const account = withIntegrationStatus(v);
+        if (account.platform === 'telegram' && account.sessionString) {
+          try {
+            accounts[k as SocialPlatform] = {
+              ...account,
+              sessionString: decryptSecret(account.sessionString),
+            };
+          } catch {
+            accounts[k as SocialPlatform] = { ...account, sessionString: undefined };
+          }
+        } else {
+          accounts[k as SocialPlatform] = account;
+        }
+      }
       return {
-        accounts: Object.fromEntries(
-          Object.entries({ ...DEFAULT_STATE.accounts, ...parsed.accounts }).map(([k, v]) => [
-            k,
-            withIntegrationStatus(v),
-          ]),
-        ) as Record<SocialPlatform, SocialAccountConnection>,
+        accounts,
         whatsappGroups: parsed.whatsappGroups || DEFAULT_STATE.whatsappGroups,
       };
     }
@@ -169,8 +187,19 @@ export function buildConnectAuthorizeResult(
 
 export function saveConnectionsStore(state: ConnectionsState): void {
   try {
+    const toSave = {
+      ...state,
+      accounts: { ...state.accounts },
+    };
+    const telegramAccount = toSave.accounts.telegram;
+    if (telegramAccount?.sessionString) {
+      toSave.accounts.telegram = {
+        ...telegramAccount,
+        sessionString: encryptSecret(telegramAccount.sessionString),
+      };
+    }
     mkdirSync(dirname(STORE_PATH), { recursive: true });
-    writeFileSync(STORE_PATH, JSON.stringify(state, null, 2), 'utf8');
+    writeFileSync(STORE_PATH, JSON.stringify(toSave, null, 2), 'utf8');
   } catch {
     // ignore
   }
@@ -243,4 +272,18 @@ export function updateWhatsAppGroupConsent(
 
   saveConnectionsStore(state);
   return group;
+}
+
+export function withoutSessionSecrets(state: ConnectionsState): ConnectionsState {
+  const sanitizedAccounts: Record<SocialPlatform, SocialAccountConnection> = {
+    instagram: { ...state.accounts.instagram, sessionString: undefined },
+    tiktok: { ...state.accounts.tiktok, sessionString: undefined },
+    facebook: { ...state.accounts.facebook, sessionString: undefined },
+    whatsapp: { ...state.accounts.whatsapp, sessionString: undefined },
+    telegram: { ...state.accounts.telegram, sessionString: undefined },
+  };
+  return {
+    accounts: sanitizedAccounts,
+    whatsappGroups: state.whatsappGroups,
+  };
 }
