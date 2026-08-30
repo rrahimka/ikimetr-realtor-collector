@@ -6,23 +6,14 @@ import { getLang } from '../lib/lang';
 import { t } from '../lib/i18n';
 import { LangSwitcher } from '../components/lang-switcher';
 import { ToastContainer } from '../components/toast';
+import { SideNav } from '../components/side-nav';
+import { CollectorRunner } from '../components/collector-runner';
 import { verifySessionToken } from '../lib/auth';
 
 export const metadata: Metadata = {
   title: 'IKimetr Realtor Collector',
   description: 'Local public professional contact collector',
 };
-
-const nav = [
-  ['/', 'nav.dashboard'],
-  ['/sources', 'nav.sources'],
-  ['/connections', 'nav.connections'],
-  ['/keywords', 'nav.keywords'],
-  ['/contacts', 'nav.contacts'],
-  ['/leads', 'nav.leads'],
-  ['/runs', 'nav.runs'],
-  ['/review', 'nav.review'],
-] as const;
 
 import { getRepositories } from '../lib/db';
 
@@ -45,15 +36,11 @@ export default async function Layout({ children }: { children: React.ReactNode }
                 </div>
               </Link>
               <nav>
-                {nav.map(([href, key]) => (
-                  <Link key={href} href={href}>
-                    {t(lang, key)}
-                    {key === 'nav.review' && pendingReviewCount > 0 ? ` (${pendingReviewCount})` : ''}
-                  </Link>
-                ))}
+                <SideNav lang={lang} pendingReviewCount={pendingReviewCount} />
               </nav>
             </aside>
             <main>
+              <CollectorRunner lang={lang} />
               <header className="global-header">
                 <div className="header-left"></div>
                 <div className="header-right">

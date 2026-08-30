@@ -44,6 +44,7 @@ export function SocialConnectionsPanel({
     { id: 'tiktok', name: 'TikTok' },
     { id: 'facebook', name: 'Facebook' },
     { id: 'whatsapp', name: 'WhatsApp' },
+    { id: 'telegram', name: 'Telegram' },
   ];
 
   const handleConnect = async (platform: SocialPlatform) => {
@@ -86,6 +87,33 @@ export function SocialConnectionsPanel({
         const account = data.account;
         setAccounts((prev) => ({ ...prev, [platform]: account }));
         showToast(t(lang, 'toast.actionSuccess'), 'info');
+      }
+    } catch {
+      showToast(t(lang, 'toast.stopFailed'), 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSwitchAccount = async (platform: SocialPlatform) => {
+    setBusy(platform);
+    try {
+      const res = await fetch('/api/connections', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ platform, action: 'switch_account' }),
+      });
+      const data = (await res.json()) as ConnectionApiResponse;
+      if (res.ok && data.account) {
+        const account = data.account;
+        setAccounts((prev) => ({ ...prev, [platform]: account }));
+        if (account.humanAuthRequired) {
+          setAuthModalAccount(account);
+        } else {
+          showToast(t(lang, 'toast.actionSuccess'), 'success');
+        }
+      } else {
+        showToast(t(lang, 'toast.stopFailed'), 'error');
       }
     } catch {
       showToast(t(lang, 'toast.stopFailed'), 'error');
@@ -167,6 +195,9 @@ export function SocialConnectionsPanel({
   return (
     <div>
       <h2>{t(lang, 'connections.socialNetworks')}</h2>
+      <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--text-muted)' }}>
+        {t(lang, 'connections.mockBadge')}
+      </p>
 
       <div className="connections-grid">
         {platforms.map(({ id, name }) => {
@@ -226,6 +257,14 @@ export function SocialConnectionsPanel({
                     </button>
                     <button
                       type="button"
+                      className="secondary"
+                      onClick={() => { void handleSwitchAccount(id); }}
+                      disabled={busy === id}
+                    >
+                      {t(lang, 'connections.switchAccount')}
+                    </button>
+                    <button
+                      type="button"
                       className="danger"
                       onClick={() => { void handleDisconnect(id); }}
                       disabled={busy === id}
@@ -247,33 +286,25 @@ export function SocialConnectionsPanel({
           );
         })}
 
-        {/* Existing Telegram Connector Preservation Card */}
-        <div className="connection-card" style={{ borderLeft: '4px solid var(--accent)' }}>
-          <div>
-            <div className="connection-header">
-              <div className="platform-title">Telegram (MTProto Authorized)</div>
-              <span className="badge badge-success">{t(lang, 'telegram.statusActive')}</span>
-            </div>
-            <div className="connection-body">
-              <div>
-                <strong>{t(lang, 'connections.account')}:</strong> +994 50 *** ** **
-              </div>
-              <div style={{ marginTop: '6px' }}>
-                <span className="surface-tag">✓ Каналы</span>
-                <span className="surface-tag">✓ Супергруппы</span>
-                <span className="surface-tag">✓ Лид-интеллект</span>
-              </div>
-              <p style={{ margin: '8px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
-                Авторизованный коннектор сообщений сохранён и активен в системе.
-              </p>
-            </div>
+        {/* Existing Telegram Connector Preservation Banner */}
+      <div className="connection-card" style={{ borderLeft: '4px solid var(--accent)' }}>
+        <div>
+          <div className="connection-header">
+            <div className="platform-title">Telegram — MTProto Connector</div>
+            <span className="badge badge-success">{t(lang, 'telegram.statusActive')}</span>
           </div>
-          <div className="connection-actions">
-            <a href="/sources" className="button secondary" style={{ textDecoration: 'none' }}>
-              Перейти к источникам Telegram
-            </a>
+          <div className="connection-body">
+            <p style={{ margin: '0', fontSize: '12px', color: 'var(--text-muted)' }}>
+              Авторизованный MTProto коннектор управляется через карточку Telegram выше. Каналы и супергруппы доступны через источники.
+            </p>
           </div>
         </div>
+        <div className="connection-actions">
+          <a href="/sources" className="button secondary" style={{ textDecoration: 'none' }}>
+            Перейти к источникам Telegram
+          </a>
+        </div>
+      </div>
       </div>
 
       {/* Human Auth Modal */}

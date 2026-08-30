@@ -392,3 +392,137 @@ describe('repositories', () => {
     expect(contact).toMatchObject({ confidence: 0.78, verificationStatus: 'unreviewed' });
   });
 });
+
+describe('collector sessions', () => {
+  it('creates, heartbeats, computes counters and stops a continuous run', () => {
+    const repos = setup();
+    const webSource = repos.sources.create(source);
+    const session = repos.collectorSessions.create('web');
+    expect(repos.collectorSessions.getActive()?.id).toBe(session.id);
+
+    repos.collectorSessions.heartbeat(session.id);
+    const afterBeat = repos.collectorSessions.get(session.id)!;
+    expect(afterBeat.lastHeartbeatAt).not.toBeNull();
+
+    // Enqueue a run belonging to the session and complete it with metrics.
+    const run = repos.runs.enqueue(webSource.id, session.id);
+    repos.runs.claimNext();
+    repos.runs.finish(run.id, 'completed', { pagesChecked: 3, phonesFound: 2, uniquePhones: 2 }, undefined, { newContacts: 1, duplicates: 1 });
+
+    const counters = repos.collectorSessions.computeCounters(session.id);
+    expect(counters).toMatchObject({ pagesChecked: 3, discoveredListings: 2, newContacts: 1, duplicates: 1, runsCompleted: 1 });
+
+    const stopped = repos.collectorSessions.markStopped(session.id, 'user_requested');
+    expect(stopped?.status).toBe('stopped');
+    expect(repos.collectorSessions.getActive()).toBeUndefined();
+  });
+
+  it('stores the session id on a run for traceability', () => {
+    const repos = setup();
+    const webSource = repos.sources.create(source);
+    const session = repos.collectorSessions.create('web');
+    const run = repos.runs.enqueue(webSource.id, session.id);
+    expect(repos.runs.get(run.id)?.sessionId).toBe(session.id);
+  });
+});
+
+describe('cross-source deduplication (Part 11 / 12)', () => {
+  it('merges the same Azerbaijani phone discovered on a website and in a WhatsApp group into one contact with both provenance records', () => {
+    const repos = setup();
+    const websiteSource = repos.sources.create(source);
+    const waSource = repos.sources.create({ ...source, type: 'telegram_group', locator: 'https://chat.whatsapp.com/realtors' });
+    const classification = { type: 'agent' as const, confidence: 0.85, reasons: ['professional_keywords'], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-12T00:00:00.000Z' };
+
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994501234567',
+      isForeign: false,
+      evidence: { sourceId: websiteSource.id, sourceUrl: 'https://example.com/a', locationType: 'listing', excerpt: 'Əmlakçı 050 123 45 67', rawPhone: '050 123 45 67', platform: 'website', fingerprint: 'xsrc-web' },
+      classification,
+    });
+    // Same person later found in an authorized WhatsApp realtor group (different local form).
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994501234567',
+      isForeign: false,
+      evidence: { sourceId: waSource.id, sourceUrl: 'whatsapp://group/realtors?msg=9', locationType: 'comment', excerpt: 'Baku agency +994501234567', rawPhone: '994501234567', platform: 'whatsapp', fingerprint: 'xsrc-wa' },
+      classification,
+    });
+
+    const contacts = repos.contacts.list();
+    expect(contacts).toHaveLength(1);
+    const contact = contacts[0]!;
+    expect(contact.normalizedPhone).toBe('+994501234567');
+    expect(repos.contacts.evidenceFor('+994501234567')).toHaveLength(2);
+    // Provenance preserved across both sources.
+    expect(contact.originGroups).toContain('website');
+    expect(contact.originGroups).toContain('whatsapp');
+  });
+
+  it('does not create a duplicate when the WhatsApp number is already known from the web', () => {
+    const repos = setup();
+    const websiteSource = repos.sources.create(source);
+    const classification = { type: 'agent' as const, confidence: 0.85, reasons: ['professional_keywords'], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-12T00:00:00.000Z' };
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994507776655',
+      isForeign: false,
+      evidence: { sourceId: websiteSource.id, sourceUrl: 'https://example.com/x', locationType: 'listing', excerpt: 'Makler 050 777 66 55', rawPhone: '050 777 66 55', platform: 'website', fingerprint: 'known-web' },
+      classification,
+    });
+    const before = repos.contacts.list().length;
+    const waSource = repos.sources.create({ ...source, type: 'telegram_group', locator: 'https://chat.whatsapp.com/g2' });
+    const saved = repos.contacts.persistEvidence({
+      normalizedPhone: '+994507776655',
+      isForeign: false,
+      evidence: { sourceId: waSource.id, sourceUrl: 'whatsapp://group/g2?msg=1', locationType: 'comment', excerpt: 'realtor 0507776655', rawPhone: '+994507776655', platform: 'whatsapp', fingerprint: 'known-wa' },
+      classification,
+    });
+    expect(saved).toBeTruthy();
+    expect(repos.contacts.list()).toHaveLength(before);
+  });
+
+  it('merges the same phone discovered on website, TikTok, and WhatsApp into one contact with all three provenance records', () => {
+    const repos = setup();
+    const websiteSource = repos.sources.create(source);
+    const tiktokSource = repos.sources.create({ ...source, type: 'instagram_profile', locator: 'https://tiktok.com/@realtor' });
+    const waSource = repos.sources.create({ ...source, type: 'telegram_group', locator: 'https://chat.whatsapp.com/g3' });
+    const classification = { type: 'agent' as const, confidence: 0.85, reasons: ['professional_keywords'], ruleVersion: '1.0.0' as const, classifiedAt: '2026-08-12T00:00:00.000Z' };
+
+    // 1. Website discovers the number in local AZ format
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994501234567',
+      isForeign: false,
+      evidence: { sourceId: websiteSource.id, sourceUrl: 'https://example.com/a', locationType: 'listing', excerpt: 'Əmlakçı 050 123 45 67', rawPhone: '050 123 45 67', platform: 'website', fingerprint: 'triple-web' },
+      classification,
+    });
+    expect(repos.contacts.list()).toHaveLength(1);
+
+    // 2. TikTok discovers the same number in +994 format
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994501234567',
+      isForeign: false,
+      evidence: { sourceId: tiktokSource.id, sourceUrl: 'https://tiktok.com/@realtor', locationType: 'profile', excerpt: 'Realtor +994501234567', rawPhone: '+994501234567', platform: 'tiktok', fingerprint: 'triple-tt' },
+      classification,
+    });
+    expect(repos.contacts.list()).toHaveLength(1);
+
+    // 3. WhatsApp group discovers the same number in 994 format (no +)
+    repos.contacts.persistEvidence({
+      normalizedPhone: '+994501234567',
+      isForeign: false,
+      evidence: { sourceId: waSource.id, sourceUrl: 'whatsapp://group/g3?msg=42', locationType: 'comment', excerpt: 'Agent 994501234567', rawPhone: '994501234567', platform: 'whatsapp', fingerprint: 'triple-wa' },
+      classification,
+    });
+    expect(repos.contacts.list()).toHaveLength(1);
+
+    // All three evidence records preserved
+    const evidence = repos.contacts.evidenceFor('+994501234567');
+    expect(evidence).toHaveLength(3);
+    const platforms = evidence.map((e) => e.platform).sort();
+    expect(platforms).toEqual(['tiktok', 'website', 'whatsapp']);
+
+    // Origin groups reflect all sources (TikTok and Instagram are classified as 'social')
+    const contact = repos.contacts.list()[0]!;
+    expect(contact.originGroups).toContain('website');
+    expect(contact.originGroups).toContain('social');
+    expect(contact.originGroups).toContain('whatsapp');
+  });
+});

@@ -128,7 +128,7 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
     await expect(page.getByText('TikTok')).toBeVisible();
     await expect(page.getByText('Facebook')).toBeVisible();
     await expect(page.getByText('WhatsApp', { exact: true })).toBeVisible();
-    await expect(page.getByText('Telegram (MTProto Authorized)')).toBeVisible();
+    await expect(page.getByText('Telegram — MTProto Connector')).toBeVisible();
 
     // 3. Verify ordinary source rows do not contain "Аварийное отключение"
     await websitesTab.click();

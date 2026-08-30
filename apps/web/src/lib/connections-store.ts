@@ -50,6 +50,16 @@ const DEFAULT_STATE: ConnectionsState = {
       maxSafePreset: true,
       connectedAt: '2026-08-28T00:00:00Z',
     },
+    telegram: {
+      platform: 'telegram',
+      status: 'connected',
+      accountHandle: '+994 50 555 12 34',
+      accountName: 'MTProto Authorized Connector',
+      enabledSurfaces: getMaxSafePresetSurfaces('telegram'),
+      purpose: 'both',
+      maxSafePreset: true,
+      connectedAt: '2026-08-28T00:00:00Z',
+    },
   },
   whatsappGroups: [
     {

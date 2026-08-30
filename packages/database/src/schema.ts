@@ -4,7 +4,20 @@ export const sources = sqliteTable('sources', { id: integer('id').primaryKey({ a
 
 export const keywords = sqliteTable('keywords', { id: integer('id').primaryKey({ autoIncrement: true }), value: text('value').notNull().unique(), language: text('language').notNull(), createdAt: text('created_at').notNull() });
 
-export const runs = sqliteTable('runs', { id: integer('id').primaryKey({ autoIncrement: true }), sourceId: integer('source_id').notNull().references(() => sources.id), status: text('status').notNull(), startedAt: text('started_at'), finishedAt: text('finished_at'), pagesChecked: integer('pages_checked').notNull(), phonesFound: integer('phones_found').notNull(), uniquePhones: integer('unique_phones').notNull(), error: text('error'), cancellationRequested: integer('cancellation_requested', { mode: 'boolean' }).notNull(), needsReview: integer('needs_review', { mode: 'boolean' }).notNull(), createdAt: text('created_at').notNull() });
+export const runs = sqliteTable('runs', { id: integer('id').primaryKey({ autoIncrement: true }), sourceId: integer('source_id').notNull().references(() => sources.id), status: text('status').notNull(), startedAt: text('started_at'), finishedAt: text('finished_at'), pagesChecked: integer('pages_checked').notNull(), phonesFound: integer('phones_found').notNull(), uniquePhones: integer('unique_phones').notNull(), error: text('error'), cancellationRequested: integer('cancellation_requested', { mode: 'boolean' }).notNull(), needsReview: integer('needs_review', { mode: 'boolean' }).notNull(), sessionId: integer('session_id').references(() => collectorSessions.id), newContacts: integer('new_contacts').notNull().default(0), duplicates: integer('duplicates').notNull().default(0), createdAt: text('created_at').notNull() });
+
+export const collectorSessions = sqliteTable('collector_sessions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  status: text('status').notNull(),
+  startedAt: text('started_at'),
+  startedBy: text('started_by'),
+  lastHeartbeatAt: text('last_heartbeat_at'),
+  stoppedAt: text('stopped_at'),
+  stopReason: text('stop_reason'),
+  activeSourcesJson: text('active_sources_json').notNull().default('[]'),
+  countersJson: text('counters_json').notNull().default('{}'),
+  error: text('error'),
+});
 
 export const contacts = sqliteTable('contacts', { id: integer('id').primaryKey({ autoIncrement: true }), normalizedPhone: text('normalized_phone').notNull(), originalPhone: text('original_phone').notNull(), isForeign: integer('is_foreign', { mode: 'boolean' }).notNull(), type: text('type').notNull(), name: text('name'), agency: text('agency'), city: text('city'), username: text('username'), platform: text('platform'), confidence: real('confidence').notNull(), reasonsJson: text('reasons_json').notNull(), ruleVersion: text('rule_version').notNull(), classifiedAt: text('classified_at').notNull(), verificationStatus: text('verification_status').notNull(), mergedIntoId: integer('merged_into_id'), firstSeenAt: text('first_seen_at').notNull(), lastSeenAt: text('last_seen_at').notNull() }, (table) => [uniqueIndex('contacts_phone').on(table.normalizedPhone)]);
 

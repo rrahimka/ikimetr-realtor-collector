@@ -1,4 +1,4 @@
-export type SocialPlatform = 'instagram' | 'tiktok' | 'facebook' | 'whatsapp';
+export type SocialPlatform = 'instagram' | 'tiktok' | 'facebook' | 'whatsapp' | 'telegram';
 
 export type ConnectionStatus =
   | 'disconnected'
@@ -74,6 +74,17 @@ export function getPlatformSupportedSurfaces(platform: SocialPlatform): SearchSu
         'comments',
         'phone_crossmatch',
       ];
+    case 'telegram':
+      return [
+        'name_username',
+        'bio_about',
+        'posts_captions',
+        'comments',
+        'hashtags',
+        'geo_keywords',
+        'agency_name',
+        'phone_crossmatch',
+      ];
   }
 }
 
@@ -90,6 +101,8 @@ export function getMaxSafePresetSurfaces(platform: SocialPlatform): SearchSurfac
       return ['name_username', 'bio_about', 'posts_captions', 'comments', 'geo_keywords', 'agency_name'];
     case 'whatsapp':
       return ['name_username', 'bio_about', 'posts_captions', 'comments'];
+    case 'telegram':
+      return ['name_username', 'bio_about', 'posts_captions', 'comments', 'hashtags', 'geo_keywords', 'agency_name'];
   }
 }
 

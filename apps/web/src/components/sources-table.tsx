@@ -307,29 +307,32 @@ export function SourcesTable({
 
   return (
     <div style={{ display: 'grid', gap: '24px' }}>
-      {/* Category filter tabs */}
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <button
-          type="button"
-          className={`source-filter-btn ${filter === 'all' ? 'active' : ''}`}
-          onClick={() => setFilter('all')}
-        >
-          {t(lang, 'sources.filterAll')} ({totalCount})
-        </button>
-        <button
-          type="button"
-          className={`source-filter-btn ${filter === 'website' ? 'active' : ''}`}
-          onClick={() => setFilter('website')}
-        >
-          {t(lang, 'sources.filterWebsites')} ({websiteSources.length})
-        </button>
-        <button
-          type="button"
-          className={`source-filter-btn ${filter === 'social' ? 'active' : ''}`}
-          onClick={() => setFilter('social')}
-        >
-          {t(lang, 'sources.filterSocial')} ({socialSources.length})
-        </button>
+      {/* Category filter toolbar — sticky top-left application toolbar */}
+      <div className="source-toolbar">
+        <div className="source-toolbar-title">{t(lang, 'sources.category')}</div>
+        <div className="source-toolbar-actions">
+          <button
+            type="button"
+            className={`source-filter-btn ${filter === 'all' ? 'active' : ''}`}
+            onClick={() => setFilter('all')}
+          >
+            {t(lang, 'sources.filterAll')} ({totalCount})
+          </button>
+          <button
+            type="button"
+            className={`source-filter-btn ${filter === 'website' ? 'active' : ''}`}
+            onClick={() => setFilter('website')}
+          >
+            {t(lang, 'sources.filterWebsites')} ({websiteSources.length})
+          </button>
+          <button
+            type="button"
+            className={`source-filter-btn ${filter === 'social' ? 'active' : ''}`}
+            onClick={() => setFilter('social')}
+          >
+            {t(lang, 'sources.filterSocial')} ({socialSources.length})
+          </button>
+        </div>
       </div>
 
       {/* Website Category Section */}

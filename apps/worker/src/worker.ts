@@ -9,6 +9,7 @@ import {
 } from '@ikimetr/connectors';
 import type { createRepositories } from '@ikimetr/database';
 import type { ConnectorContext } from './connectors';
+import { runCollectorTick } from './collector';
 
 type Repositories = ReturnType<typeof createRepositories>;
 type Source = NonNullable<ReturnType<Repositories['sources']['get']>>;
@@ -118,7 +119,7 @@ export async function processRun(
         binaResult.outcomes.cancelled += 1;
         repos.runs.finishBina(run.id, 'cancelled', counters, requestedStop, { outcomes: binaResult.outcomes, newContacts, duplicates, agenciesFound: agencies.size });
       } else {
-        repos.runs.finish(run.id, 'cancelled', counters);
+        repos.runs.finish(run.id, 'cancelled', counters, undefined, { newContacts, duplicates });
       }
       return;
     }
@@ -186,7 +187,7 @@ export async function processRun(
     binaResult.outcomes.duplicate += duplicates;
     repos.runs.finishBina(run.id, terminalStop ? 'blocked' : 'completed', counters, terminalStop, { outcomes: binaResult.outcomes, newContacts, duplicates, agenciesFound: agencies.size });
   } else {
-    repos.runs.finish(run.id, 'completed', counters);
+    repos.runs.finish(run.id, 'completed', counters, undefined, { newContacts, duplicates });
   }
 }
 
@@ -209,6 +210,11 @@ export async function runWorker(options: { repos: Repositories; connector: Conne
   options.repos.runs.recoverAbandoned();
   while (!options.signal.aborted) {
     const worked = await runWorkerOnce(options.repos, options.connector);
+    try {
+      runCollectorTick(options.repos, process.env, new Date());
+    } catch {
+      // A collector-tick failure must never kill the worker loop.
+    }
     if (!worked) await new Promise<void>((resolve) => {
       const id = setTimeout(resolve, options.pollMs ?? 1_000);
       options.signal.addEventListener('abort', () => { clearTimeout(id); resolve(); }, { once: true });

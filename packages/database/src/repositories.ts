@@ -109,6 +109,7 @@ function mapRun(row: Record<string, unknown>) {
     id: row.id as number,
     sourceId: row.source_id as number,
     status: row.status as RunStatus,
+    sessionId: (row.session_id as number | null) ?? null,
     startedAt: row.started_at as string | null,
     finishedAt: row.finished_at as string | null,
     pagesChecked: row.pages_checked as number,
@@ -271,16 +272,17 @@ export function createRepositories(db: CollectorDatabase) {
     remove(id:number){return db.prepare('DELETE FROM keywords WHERE id=?').run(id).changes>0;},
   };
   const runs = {
-    enqueue(sourceId: number) { const sourceRow=db.prepare('SELECT deleted_at FROM sources WHERE id=?').get(sourceId) as {deleted_at:string|null}|undefined; if(!sourceRow)throw new Error('source not found');if(sourceRow.deleted_at)throw new Error('source is deleted');try { const result = db.prepare("INSERT INTO runs(source_id,status,pages_checked,phones_found,unique_phones,cancellation_requested,needs_review,created_at) VALUES(?,'queued',0,0,0,0,0,?)").run(sourceId, now()); return this.get(Number(result.lastInsertRowid))!; } catch (error) { if (String(error).includes('UNIQUE')) throw new Error('source already has an active run'); throw error; } },
+    enqueue(sourceId: number, sessionId?: number | null) { const sourceRow=db.prepare('SELECT deleted_at FROM sources WHERE id=?').get(sourceId) as {deleted_at:string|null}|undefined; if(!sourceRow)throw new Error('source not found');if(sourceRow.deleted_at)throw new Error('source is deleted');try { const result = db.prepare("INSERT INTO runs(source_id,status,pages_checked,phones_found,unique_phones,cancellation_requested,needs_review,session_id,created_at) VALUES(?,'queued',0,0,0,0,0,?,?)").run(sourceId, sessionId ?? null, now()); return this.get(Number(result.lastInsertRowid))!; } catch (error) { if (String(error).includes('UNIQUE')) throw new Error('source already has an active run'); throw error; } },
     get(id: number) { const row = db.prepare('SELECT * FROM runs WHERE id=?').get(id) as Record<string, unknown> | undefined; return row ? mapRun(row) : undefined; },
     list() { return (db.prepare('SELECT * FROM runs ORDER BY id DESC').all() as Record<string, unknown>[]).map(mapRun); },
     hasActive(sourceId: number) { return Boolean((db.prepare("SELECT 1 present FROM runs WHERE source_id=? AND status IN ('queued','running') LIMIT 1").get(sourceId) as { present: number } | undefined)?.present); },
     latestTerminal(sourceId: number) { const row = db.prepare("SELECT * FROM runs WHERE source_id=? AND status NOT IN ('queued','running') ORDER BY COALESCE(finished_at,created_at) DESC,id DESC LIMIT 1").get(sourceId) as Record<string, unknown> | undefined; return row ? mapRun(row) : undefined; },
     claimNext() { const claim = db.transaction(() => { const row = db.prepare("SELECT r.id FROM runs r JOIN sources s ON s.id=r.source_id WHERE r.status='queued' AND s.deleted_at IS NULL AND s.enabled=1 AND s.kill_switch=0 ORDER BY r.id LIMIT 1").get() as {id:number}|undefined; if (!row) return undefined; db.prepare("UPDATE runs SET status='running',started_at=? WHERE id=? AND status='queued'").run(now(), row.id); return this.get(row.id); }); return claim(); },
     requestCancellation(id: number) { db.prepare('UPDATE runs SET cancellation_requested=1 WHERE id=?').run(id); },
+    requestCancellationBySession(sessionId: number) { db.prepare("UPDATE runs SET cancellation_requested=1 WHERE session_id=? AND status IN ('queued','running')").run(sessionId); },
     shouldCancel(id: number) { return Boolean((db.prepare('SELECT cancellation_requested FROM runs WHERE id=?').get(id) as {cancellation_requested:number}|undefined)?.cancellation_requested); },
-    finish(id: number, status: Exclude<RunStatus, 'queued'|'running'>, counters: RunCounters = { pagesChecked: 0, phonesFound: 0, uniquePhones: 0 }, error?: string) { db.prepare('UPDATE runs SET status=?,finished_at=?,pages_checked=?,phones_found=?,unique_phones=?,error=? WHERE id=?').run(status,now(),counters.pagesChecked,counters.phonesFound,counters.uniquePhones,error ?? null,id); },
-    finishBina(id: number, status: 'completed' | 'blocked' | 'cancelled', counters: RunCounters, reason: string | undefined, summary: BinaRunSummary) { db.transaction(() => { this.finish(id, status, counters, reason); audit.record('run.bina.summary', 'run', id, summary); })(); return this.get(id)!; },
+    finish(id: number, status: Exclude<RunStatus, 'queued'|'running'>, counters: RunCounters = { pagesChecked: 0, phonesFound: 0, uniquePhones: 0 }, error?: string, extra?: { newContacts?: number; duplicates?: number }) { db.prepare('UPDATE runs SET status=?,finished_at=?,pages_checked=?,phones_found=?,unique_phones=?,error=?,new_contacts=?,duplicates=? WHERE id=?').run(status,now(),counters.pagesChecked,counters.phonesFound,counters.uniquePhones,error ?? null,extra?.newContacts ?? 0,extra?.duplicates ?? 0,id); },
+    finishBina(id: number, status: 'completed' | 'blocked' | 'cancelled', counters: RunCounters, reason: string | undefined, summary: BinaRunSummary) { db.transaction(() => { this.finish(id, status, counters, reason, { newContacts: summary.newContacts, duplicates: summary.duplicates }); audit.record('run.bina.summary', 'run', id, summary); })(); return this.get(id)!; },
     recoverAbandoned() { return db.prepare("UPDATE runs SET status='failed',finished_at=?,needs_review=1,error=COALESCE(error,'Worker restarted during run') WHERE status='running'").run(now()).changes; },
   };
   const contacts = {
@@ -725,6 +727,119 @@ export function createRepositories(db: CollectorDatabase) {
       `).run(sourceId, checkpointType, lastCheckpointId, itemsProcessed, time);
     },
   };
+  type SessionStatus = 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
+  type CollectorSession = {
+    id: number;
+    status: SessionStatus;
+    startedAt: string | null;
+    startedBy: string | null;
+    lastHeartbeatAt: string | null;
+    stoppedAt: string | null;
+    stopReason: string | null;
+    activeSources: number[];
+    counters: Record<string, number>;
+    error: string | null;
+  };
+  type CollectorCounters = {
+    pagesChecked: number;
+    discoveredListings: number;
+    uniquePhones: number;
+    newContacts: number;
+    duplicates: number;
+    errors: number;
+    runsTotal: number;
+    runsCompleted: number;
+    currentSourceId: number | null;
+  };
+
+  const mapSession = (row: Record<string, unknown>): CollectorSession => {
+    let activeSources: number[] = [];
+    try {
+      const parsed = JSON.parse((row.active_sources_json as string) || '[]') as unknown;
+      if (Array.isArray(parsed)) activeSources = parsed.filter((v): v is number => typeof v === 'number');
+    } catch { /* ignore */ }
+    let counters: Record<string, number> = {};
+    try {
+      const parsed = JSON.parse((row.counters_json as string) || '{}') as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) counters = parsed as Record<string, number>;
+    } catch { /* ignore */ }
+    return {
+      id: row.id as number,
+      status: row.status as SessionStatus,
+      startedAt: (row.started_at as string | null) || null,
+      startedBy: (row.started_by as string | null) || null,
+      lastHeartbeatAt: (row.last_heartbeat_at as string | null) || null,
+      stoppedAt: (row.stopped_at as string | null) || null,
+      stopReason: (row.stop_reason as string | null) || null,
+      activeSources,
+      counters,
+      error: (row.error as string | null) || null,
+    };
+  };
+
+  const collectorSessions = {
+    create(startedBy = 'web') {
+      const time = now();
+      const result = db.prepare("INSERT INTO collector_sessions(status,started_at,started_by,last_heartbeat_at,active_sources_json,counters_json) VALUES('running',?,?,?,?,?)").run(time, startedBy, time, '[]', '{}');
+      return this.get(Number(result.lastInsertRowid))!;
+    },
+    get(id: number) {
+      const row = db.prepare('SELECT * FROM collector_sessions WHERE id=?').get(id) as Record<string, unknown> | undefined;
+      return row ? mapSession(row) : undefined;
+    },
+    getActive() {
+      const row = db.prepare("SELECT * FROM collector_sessions WHERE status IN ('starting','running') ORDER BY id DESC LIMIT 1").get() as Record<string, unknown> | undefined;
+      return row ? mapSession(row) : undefined;
+    },
+    heartbeat(id: number) {
+      db.prepare('UPDATE collector_sessions SET last_heartbeat_at=? WHERE id=?').run(now(), id);
+      return this.get(id);
+    },
+    setStatus(id: number, status: SessionStatus) {
+      db.prepare('UPDATE collector_sessions SET status=? WHERE id=?').run(status, id);
+    },
+    markStopped(id: number, reason: string) {
+      db.prepare("UPDATE collector_sessions SET status='stopped', stopped_at=?, stop_reason=? WHERE id=?").run(now(), reason, id);
+      return this.get(id);
+    },
+    markError(id: number, error: string) {
+      db.prepare("UPDATE collector_sessions SET status='error', error=? WHERE id=?").run(error, id);
+      return this.get(id);
+    },
+    setActiveSources(id: number, sourceIds: number[]) {
+      db.prepare('UPDATE collector_sessions SET active_sources_json=? WHERE id=?').run(JSON.stringify(sourceIds), id);
+    },
+    setCounters(id: number, counters: Record<string, number>) {
+      db.prepare('UPDATE collector_sessions SET counters_json=? WHERE id=?').run(JSON.stringify(counters), id);
+    },
+    computeCounters(id: number): CollectorCounters {
+      const rows = db.prepare("SELECT status, pages_checked, phones_found, unique_phones, new_contacts, duplicates FROM runs WHERE session_id=?").all(id) as Array<Record<string, unknown>>;
+      const counters: CollectorCounters = {
+        pagesChecked: 0,
+        discoveredListings: 0,
+        uniquePhones: 0,
+        newContacts: 0,
+        duplicates: 0,
+        errors: 0,
+        runsTotal: rows.length,
+        runsCompleted: 0,
+        currentSourceId: null,
+      };
+      for (const row of rows) {
+        counters.pagesChecked += Number(row.pages_checked || 0);
+        counters.discoveredListings += Number(row.phones_found || 0);
+        counters.uniquePhones += Number(row.unique_phones || 0);
+        counters.newContacts += Number(row.new_contacts || 0);
+        counters.duplicates += Number(row.duplicates || 0);
+        if (row.status === 'failed') counters.errors += 1;
+        if (row.status === 'completed' || row.status === 'blocked' || row.status === 'cancelled') counters.runsCompleted += 1;
+      }
+      const running = db.prepare("SELECT source_id FROM runs WHERE session_id=? AND status='running' ORDER BY id DESC LIMIT 1").get(id) as { source_id: number } | undefined;
+      counters.currentSourceId = running ? running.source_id : null;
+      return counters;
+    },
+  };
+
   const leads = {
     create(input: LeadInput): { lead: LeadRecord; isNew: boolean } {
       const time = now();
@@ -977,5 +1092,5 @@ export function createRepositories(db: CollectorDatabase) {
       };
     },
   };
-  return { sources, keywords, runs, contacts, evidence, reviews, audit, dashboard, binaListings, recipes, checkpoints, leads };
+  return { sources, keywords, runs, contacts, evidence, reviews, audit, dashboard, binaListings, recipes, checkpoints, collectorSessions, leads };
 }
