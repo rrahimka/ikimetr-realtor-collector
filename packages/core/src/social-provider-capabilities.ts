@@ -81,7 +81,9 @@ export const PROVIDER_REGISTRY: Record<SocialPlatform, ProviderProfile> = {
     ],
     notes:
       'Instagram Graph API requires a Meta app + business/creator account + App Review. ' +
-      'Public-web HTML scraping is not an official integration.',
+      'OAuth2+PKCE URL construction and callback handling are implemented. ' +
+      'No Graph API token exchange or data fetch exists yet. ' +
+      'A public-HTML scraper for public profiles exists but is not an official integration.',
   },
   facebook: {
     platform: 'facebook',
@@ -94,6 +96,8 @@ export const PROVIDER_REGISTRY: Record<SocialPlatform, ProviderProfile> = {
     unsupportedCapabilities: ['private_profile_scraping', 'group_member_enumeration_official'],
     notes:
       'Facebook Graph API requires a Meta app + App Review for most page/group permissions. ' +
+      'OAuth2+PKCE URL construction and callback handling are implemented. ' +
+      'No Graph API token exchange or data fetch exists yet. ' +
       'Group member enumeration via official APIs needs separate review and is not assumed here.',
   },
   tiktok: {
@@ -107,12 +111,14 @@ export const PROVIDER_REGISTRY: Record<SocialPlatform, ProviderProfile> = {
     unsupportedCapabilities: ['following_list', 'private_account_scraping'],
     notes:
       'TikTok Display API (OAuth) provides public profile + videos. ' +
-      'A user’s following list is NOT available via official APIs (Research API requires approval).',
+      'OAuth2+PKCE URL construction and callback handling are implemented. ' +
+      'No Display API token exchange or data fetch exists yet. ' +
+      'A user' + 's following list is NOT available via official APIs (Research API requires approval).',
   },
   telegram: {
     platform: 'telegram',
     displayName: 'Telegram',
-    status: 'real',
+    status: 'architecture_ready',
     authMethod: 'mtproto',
     requiredEnv: ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_SESSION_STRING'],
     supportedCapabilities: [
@@ -123,7 +129,9 @@ export const PROVIDER_REGISTRY: Record<SocialPlatform, ProviderProfile> = {
     unsupportedCapabilities: [],
     notes:
       'MTProto (api_id/api_hash/session) is the official Telegram client API. ' +
-      'Scan/aggregation logic is implemented; a live session requires user-supplied credentials (never bundled).',
+      'Message processing and lead extraction logic is implemented and tested. ' +
+      'No actual MTProto client library is installed \u2014 the connection layer does not exist yet. ' +
+      'A live session requires a MTProto client implementation plus user-supplied credentials (never bundled).',
   },
   whatsapp: {
     platform: 'whatsapp',
@@ -134,9 +142,10 @@ export const PROVIDER_REGISTRY: Record<SocialPlatform, ProviderProfile> = {
     supportedCapabilities: ['group_message_scan', 'group_participant_scan_via_local_client'],
     unsupportedCapabilities: ['group_member_enumeration_official_api'],
     notes:
-      'Official WhatsApp Business Cloud API supports messaging only — it does NOT expose group ' +
-      'member lists. Group message/participant scanning requires a connected local client (unofficial). ' +
-      'Group member enumeration via official APIs is unsupported and must not be faked.',
+      'Official WhatsApp Business Cloud API supports messaging only \u2014 it does NOT expose group ' +
+      'member lists. Message processing and participant extraction logic is implemented and tested. ' +
+      'No actual WhatsApp client library is installed \u2014 the connection layer (QR scan, local client) ' +
+      'does not exist yet. Group member enumeration via official APIs is unsupported and must not be faked.',
   },
 };
 

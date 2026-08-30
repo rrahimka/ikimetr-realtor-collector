@@ -29,8 +29,8 @@ describe('social-provider-capabilities', () => {
     }
   });
 
-  it('marks telegram as the only real provider-supported path', () => {
-    expect(getProviderProfile('telegram').status).toBe('real');
+  it('marks telegram as architecture_ready (no MTProto client installed)', () => {
+    expect(getProviderProfile('telegram').status).toBe('architecture_ready');
     expect(getProviderProfile('telegram').authMethod).toBe('mtproto');
     expect(['instagram', 'tiktok', 'facebook', 'whatsapp'].every((p) => getProviderProfile(p as never).status === 'architecture_ready')).toBe(true);
   });

@@ -22,13 +22,10 @@ const DEFAULT_STATE: ConnectionsState = {
   accounts: {
     instagram: {
       platform: 'instagram',
-      status: 'connected',
-      accountHandle: '@baku_realtor_pilot',
-      accountName: 'Baku Real Estate Pilot',
+      status: 'disconnected',
       enabledSurfaces: getMaxSafePresetSurfaces('instagram'),
       purpose: 'both',
       maxSafePreset: true,
-      connectedAt: '2026-08-28T00:00:00Z',
     },
     tiktok: {
       platform: 'tiktok',
@@ -46,23 +43,17 @@ const DEFAULT_STATE: ConnectionsState = {
     },
     whatsapp: {
       platform: 'whatsapp',
-      status: 'connected',
-      accountHandle: '+994 50 123 45 67',
-      accountName: 'Collector Agent',
+      status: 'disconnected',
       enabledSurfaces: getMaxSafePresetSurfaces('whatsapp'),
       purpose: 'both',
       maxSafePreset: true,
-      connectedAt: '2026-08-28T00:00:00Z',
     },
     telegram: {
       platform: 'telegram',
-      status: 'connected',
-      accountHandle: '+994 50 555 12 34',
-      accountName: 'MTProto Authorized Connector',
+      status: 'disconnected',
       enabledSurfaces: getMaxSafePresetSurfaces('telegram'),
       purpose: 'both',
       maxSafePreset: true,
-      connectedAt: '2026-08-28T00:00:00Z',
     },
   },
   whatsappGroups: [

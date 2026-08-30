@@ -4,6 +4,7 @@ import {
   updateAccountConnection,
   updateAccountSearchConfig,
   updateWhatsAppGroupConsent,
+  buildConnectAuthorizeResult,
 } from './connections-store';
 
 describe('Connections Store', () => {
@@ -173,6 +174,62 @@ describe('Connections Store', () => {
     const discSerialized = JSON.stringify(disconnected).toLowerCase();
     for (const forbidden of ['token', 'secret', 'password', 'cookie', 'accesstoken', 'refreshtoken']) {
       expect(discSerialized.includes(forbidden)).toBe(false);
+    }
+  });
+
+  it('default state has no fake handles or hardcoded credentials', () => {
+    const store = getConnectionsStore();
+    const fakeHandles = ['@baku_realtor_pilot', '+994 50 123 45 67', '+994 50 555 12 34', 'Collector Agent', 'MTProto Authorized Connector'];
+    for (const platform of ['instagram', 'tiktok', 'facebook', 'whatsapp', 'telegram'] as const) {
+      const acc = store.accounts[platform];
+      expect(fakeHandles).not.toContain(acc.accountHandle);
+      expect(acc.integrationStatus).toBeDefined();
+    }
+  });
+
+  it('buildConnectAuthorizeResult returns needs_credentials when env vars are missing', () => {
+    const result = buildConnectAuthorizeResult('instagram', {} as NodeJS.ProcessEnv);
+    expect(result.kind).toBe('needs_credentials');
+    expect(result.needsCredentials).toBe(true);
+    expect(result.authorizeUrl).toBeUndefined();
+  });
+
+  it('buildConnectAuthorizeResult returns oauth with authorizeUrl when credentials are present', () => {
+    const env = {
+      INSTAGRAM_APP_ID: 'test-app-id',
+      INSTAGRAM_APP_SECRET: 'test-app-secret',
+    } as unknown as NodeJS.ProcessEnv;
+    const result = buildConnectAuthorizeResult('instagram', env);
+    expect(result.kind).toBe('oauth');
+    expect(result.authorizeUrl).toBeDefined();
+    expect(result.authorizeUrl).toContain('instagram.com/oauth/authorize');
+    expect(result.authorizeUrl).toContain('client_id=test-app-id');
+    expect(result.authorizeUrl).toContain('code_challenge=');
+    expect(result.authorizeUrl).toContain('code_challenge_method=S256');
+  });
+
+  it('buildConnectAuthorizeResult returns mtproto when Telegram credentials are present', () => {
+    const env = {
+      TELEGRAM_API_ID: '12345',
+      TELEGRAM_API_HASH: 'abc123',
+      TELEGRAM_SESSION_STRING: 'session123',
+    } as unknown as NodeJS.ProcessEnv;
+    const result = buildConnectAuthorizeResult('telegram', env);
+    expect(result.kind).toBe('mtproto');
+    expect(result.authorizeUrl).toBeUndefined();
+  });
+
+  it('buildConnectAuthorizeResult returns whatsapp_qr for WhatsApp', () => {
+    const result = buildConnectAuthorizeResult('whatsapp', {} as NodeJS.ProcessEnv);
+    expect(result.kind).toBe('whatsapp_qr');
+  });
+
+  it('integrationStatus is populated on all accounts', () => {
+    const store = getConnectionsStore();
+    for (const platform of ['instagram', 'tiktok', 'facebook', 'whatsapp', 'telegram'] as const) {
+      const acc = store.accounts[platform];
+      expect(acc.integrationStatus).toBeDefined();
+      expect(['real', 'architecture_ready', 'mock', 'unsupported']).toContain(acc.integrationStatus);
     }
   });
 });

@@ -91,10 +91,23 @@ export async function POST(request: Request) {
     }
 
     if (body.action === 'confirm_auth') {
-      const handle = body.accountHandle || (body.platform === 'whatsapp' ? '+994 50 123 45 67' : body.platform === 'telegram' ? '+994 50 555 12 34' : '@user');
+      const store = getConnectionsStore();
+      const current = store.accounts[body.platform];
+      if (!current || current.status !== 'connecting') {
+        return NextResponse.json(
+          { error: 'Platform must be in connecting state before confirming auth' },
+          { status: 400 }
+        );
+      }
+      if (!body.accountHandle) {
+        return NextResponse.json(
+          { error: 'accountHandle is required to confirm auth (no hardcoded handles)' },
+          { status: 400 }
+        );
+      }
       const updated = updateAccountConnection(body.platform, {
         status: 'connected',
-        accountHandle: handle,
+        accountHandle: body.accountHandle,
         humanAuthRequired: false,
         connectedAt: new Date().toISOString(),
       });
