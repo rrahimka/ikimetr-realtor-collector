@@ -6,6 +6,8 @@ export * from './origin';
 export * from './phones';
 export * from './search-intelligence';
 export * from './social-connections';
+export * from './social-provider-capabilities';
+export * from './social-provider-oauth';
 export * from './source-links';
 export * from './source-registry';
 export * from './thresholds';

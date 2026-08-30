@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   getConnectionsStore,
   updateAccountConnection,
+  buildConnectAuthorizeResult,
 } from '../../../lib/connections-store';
 import { apiError, requireApi } from '../../../lib/http';
 
@@ -50,15 +51,43 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true, account: updated });
       }
 
-      // Instagram / TikTok / Facebook / Telegram confirmation flow
-      const handle = body.accountHandle || (body.platform === 'instagram' ? '@baku_realtor_pilot' : body.platform === 'tiktok' ? '@baku_realtor' : body.platform === 'telegram' ? '+994 50 555 12 34' : 'baku.realtor');
+      // Provider-faithful connect: real OAuth authorize URL (PKCE) when app
+      // credentials are configured, or a real MTProto session path. Never fake
+      // a "connected" state — we return an authorize URL or a credentials hint.
+      const result = buildConnectAuthorizeResult(body.platform, process.env);
+      if (result.kind === 'oauth' && result.authorizeUrl) {
+        const updated = updateAccountConnection(body.platform, {
+          status: 'connecting',
+          humanAuthRequired: false,
+          authorizeUrl: result.authorizeUrl,
+          accountHandle: undefined,
+          connectedAt: undefined,
+          errorMessage: undefined,
+        });
+        return NextResponse.json({ ok: true, account: updated, authorizeUrl: result.authorizeUrl });
+      }
+      if (result.kind === 'mtproto') {
+        const updated = updateAccountConnection(body.platform, {
+          status: 'connecting',
+          humanAuthRequired: true,
+          humanAuthType: 'device_confirmation',
+          humanAuthPrompt: 'Authorize the Telegram MTProto session on your device to begin scanning.',
+          accountHandle: undefined,
+          connectedAt: undefined,
+          errorMessage: undefined,
+        });
+        return NextResponse.json({ ok: true, account: updated });
+      }
+      // needs_credentials: report honestly, do not fake a connection.
       const updated = updateAccountConnection(body.platform, {
-        status: 'connected',
-        accountHandle: handle,
-        connectedAt: new Date().toISOString(),
+        status: 'connecting',
         humanAuthRequired: false,
+        authorizeUrl: undefined,
+        accountHandle: undefined,
+        connectedAt: undefined,
+        errorMessage: 'Provider credentials are not configured (see environment variables).',
       });
-      return NextResponse.json({ ok: true, account: updated });
+      return NextResponse.json({ ok: true, account: updated, needsCredentials: true });
     }
 
     if (body.action === 'confirm_auth') {

@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./capabilities": "./src/social-provider-capabilities.ts",
+    "./oauth": "./src/social-provider-oauth.ts"
+  },
   "scripts": {
     "test": "vitest run --root ../.. packages/core/src",
     "typecheck": "tsc --noEmit"

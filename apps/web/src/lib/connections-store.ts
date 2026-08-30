@@ -7,6 +7,10 @@ import {
   type SearchSurfaceMode,
   type SearchPurpose,
   getMaxSafePresetSurfaces,
+  getProviderProfile,
+  isProviderConfigured,
+  buildOAuthAuthorizeUrl,
+  generatePkcePair,
 } from '@ikimetr/core';
 
 export interface ConnectionsState {
@@ -102,20 +106,74 @@ const DEFAULT_STATE: ConnectionsState = {
 
 const STORE_PATH = resolve(process.cwd(), 'data/connections.json');
 
+/** Fills each account with its honest provider integration classification. */
+function withIntegrationStatus(account: SocialAccountConnection): SocialAccountConnection {
+  const profile = getProviderProfile(account.platform);
+  return { ...account, integrationStatus: profile.status };
+}
+
 export function getConnectionsStore(): ConnectionsState {
   try {
     if (existsSync(STORE_PATH)) {
       const raw = readFileSync(STORE_PATH, 'utf8');
       const parsed = JSON.parse(raw) as ConnectionsState;
       return {
-        accounts: { ...DEFAULT_STATE.accounts, ...parsed.accounts },
+        accounts: Object.fromEntries(
+          Object.entries({ ...DEFAULT_STATE.accounts, ...parsed.accounts }).map(([k, v]) => [
+            k,
+            withIntegrationStatus(v),
+          ]),
+        ) as Record<SocialPlatform, SocialAccountConnection>,
         whatsappGroups: parsed.whatsappGroups || DEFAULT_STATE.whatsappGroups,
       };
     }
   } catch {
     // Fall back to default
   }
-  return DEFAULT_STATE;
+  return { accounts: DEFAULT_STATE.accounts, whatsappGroups: DEFAULT_STATE.whatsappGroups };
+}
+
+export interface ConnectAuthorizeResult {
+  kind: 'oauth' | 'mtproto' | 'whatsapp_qr' | 'needs_credentials';
+  authorizeUrl?: string | undefined;
+  needsCredentials?: boolean | undefined;
+}
+
+/**
+ * Builds a provider-faithful connect result. OAuth providers return a real
+ * authorize URL (PKCE) only when their app credentials are present in env;
+ * otherwise we report needs_credentials instead of faking a connection.
+ */
+export function buildConnectAuthorizeResult(
+  platform: SocialPlatform,
+  env: NodeJS.ProcessEnv = process.env,
+  redirectBaseUrl = 'http://127.0.0.1:3000/api/connections/oauth/callback'
+): ConnectAuthorizeResult {
+  const profile = getProviderProfile(platform);
+  if (profile.authMethod === 'oauth2' && profile.oauth) {
+    const clientIdKey = profile.oauth.requiredEnv[0] as string;
+    const clientId = (clientIdKey ? env[clientIdKey] : undefined) ?? '';
+    if (!clientId || !isProviderConfigured(profile, env)) {
+      return { kind: 'needs_credentials', needsCredentials: true };
+    }
+    const pkce = generatePkcePair();
+    const authorizeUrl = buildOAuthAuthorizeUrl(platform, {
+      clientId,
+      redirectUri: redirectBaseUrl,
+      state: platform,
+      codeChallenge: pkce.challenge,
+    });
+    return { kind: 'oauth', authorizeUrl };
+  }
+  if (profile.authMethod === 'mtproto') {
+    return isProviderConfigured(profile, env)
+      ? { kind: 'mtproto' }
+      : { kind: 'needs_credentials', needsCredentials: true };
+  }
+  if (platform === 'whatsapp') {
+    return { kind: 'whatsapp_qr' };
+  }
+  return { kind: 'needs_credentials', needsCredentials: true };
 }
 
 export function saveConnectionsStore(state: ConnectionsState): void {
@@ -147,7 +205,7 @@ export function updateAccountConnection(
 
   state.accounts[platform] = updated;
   saveConnectionsStore(state);
-  return updated;
+  return withIntegrationStatus(updated);
 }
 
 export function updateAccountSearchConfig(

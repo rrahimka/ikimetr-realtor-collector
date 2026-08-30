@@ -10,6 +10,7 @@ import {
   type SocialAccountConnection,
   type SocialPlatform,
 } from '../lib/source-options';
+import { getProviderProfile, listUnsupportedCapabilities } from '@ikimetr/core/capabilities';
 import { t, type Lang } from '../lib/i18n';
 import { showToast } from './toast';
 
@@ -22,6 +23,21 @@ interface ConnectionApiResponse {
   ok?: boolean;
   account?: SocialAccountConnection;
   error?: string;
+  authorizeUrl?: string | undefined;
+  needsCredentials?: boolean | undefined;
+}
+
+function integrationStatusVariant(status?: string): string {
+  switch (status) {
+    case 'real':
+      return 'success';
+    case 'architecture_ready':
+      return 'info';
+    case 'unsupported':
+      return 'warning';
+    default:
+      return 'muted';
+  }
 }
 
 export function SocialConnectionsPanel({
@@ -59,7 +75,13 @@ export function SocialConnectionsPanel({
       if (res.ok && data.account) {
         const account = data.account;
         setAccounts((prev) => ({ ...prev, [platform]: account }));
-        if (account.humanAuthRequired) {
+        if (data.authorizeUrl) {
+          // Provider-supported OAuth: open the real authorize URL in a new tab.
+          window.open(data.authorizeUrl, '_blank', 'noopener,noreferrer');
+          showToast(t(lang, 'connections.openAuthorize'), 'info');
+        } else if (data.needsCredentials) {
+          showToast(t(lang, 'connections.needsCredentials'), 'error');
+        } else if (account.humanAuthRequired) {
           setAuthModalAccount(account);
         } else {
           showToast(t(lang, 'toast.actionSuccess'), 'success');
@@ -205,6 +227,8 @@ export function SocialConnectionsPanel({
           const isConnected = acc?.status === 'connected';
           const isConnecting = acc?.status === 'connecting';
           const isReauth = acc?.status === 'reauth_required';
+          const profile = getProviderProfile(id);
+          const unsupported = listUnsupportedCapabilities(id);
 
           return (
             <div key={id} className="connection-card">
@@ -217,9 +241,15 @@ export function SocialConnectionsPanel({
                   {!isConnected && !isConnecting && !isReauth && (
                     <span className="badge badge-muted">{t(lang, 'connections.statusDisconnected')}</span>
                   )}
+                  <span className={`badge badge-${integrationStatusVariant(acc?.integrationStatus)}`}>
+                    {t(lang, `connections.integration.${acc?.integrationStatus ?? 'architecture_ready'}`)}
+                  </span>
                 </div>
 
                 <div className="connection-body">
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    {profile.notes}
+                  </div>
                   {acc?.accountHandle && (
                     <div>
                       <strong>{t(lang, 'connections.account')}:</strong> {acc.accountHandle}
@@ -239,6 +269,13 @@ export function SocialConnectionsPanel({
                           );
                         })}
                       </div>
+                    </div>
+                  )}
+
+                  {unsupported.length > 0 && (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      <strong>{t(lang, 'connections.notSupported')}:</strong>{' '}
+                      {unsupported.map((cap) => t(lang, `connections.cap.${cap}`)).join(', ')}
                     </div>
                   )}
                 </div>

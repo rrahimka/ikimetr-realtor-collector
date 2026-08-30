@@ -513,6 +513,10 @@ export interface SocialAccountConnection {
   humanAuthType?: 'qr' | 'otp' | 'device_confirmation' | 'browser' | undefined;
   humanAuthPrompt?: string | undefined;
   qrCodeData?: string | undefined;
+  /** Honest integration classification for this platform (real/architecture_ready/mock/unsupported). */
+  integrationStatus?: 'real' | 'architecture_ready' | 'mock' | 'unsupported' | undefined;
+  /** OAuth2 authorize URL for provider-supported connect flows (never a fake "connected" shortcut). */
+  authorizeUrl?: string | undefined;
   connectedAt?: string | undefined;
   lastScannedAt?: string | undefined;
   errorMessage?: string | undefined;

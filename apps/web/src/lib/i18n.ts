@@ -397,7 +397,7 @@ const dict: Record<string, Entry> = {
   'connections.title': { ru: 'Подключения и социальные сети', az: 'Qoşulmalar və sosial şəbəkələr', en: 'Connections & Social Networks' },
   'connections.subtitle': { ru: 'Авторизованный сбор и группы', az: 'Avtorizasiyalı toplama və qruplar', en: 'Authorized collection & groups' },
   'connections.socialNetworks': { ru: 'Социальные сети', az: 'Sosial şəbəkələr', en: 'Social Networks' },
-  'connections.mockBadge': { ru: 'ДЕМО (интеграция ожидается)', az: 'DEMO (inteqrasiya gözlənilir)', en: 'DEMO (integration pending)' },
+  'connections.mockBadge': { ru: 'Бейджи интеграции честные: реальная / архитектура готова / не поддерживается. Локальные аккаунты — демо-фикстуры; подключение через реальный OAuth/MTProto только при наличии учётных данных.', az: 'İnteqrasiya nişanları dürüstdür: real / arxitektura hazırdır / dəstəklənmir. Lokal hesablar demo-fixtures-dir; real OAuth/MTProto ilə qoşulma yalnız credential olduqda.', en: 'Integration badges are honest: real / architecture ready / unsupported. Local accounts are demo fixtures; real OAuth/MTProto connect only when credentials are present.' },
   'connections.statusConnected': { ru: '✓ Подключено', az: '✓ Qoşulub', en: '✓ Connected' },
   'connections.statusConnecting': { ru: 'Подключение…', az: 'Qoşulur…', en: 'Connecting…' },
   'connections.statusDisconnected': { ru: 'Не подключено', az: 'Qoşulmayıb', en: 'Not Connected' },
@@ -417,6 +417,24 @@ const dict: Record<string, Entry> = {
   'connections.purposeRealtors': { ru: 'Риелторов', az: 'Rieltorları', en: 'Realtors' },
   'connections.purposeLeads': { ru: 'Потенциальных клиентов', az: 'Müştəriləri', en: 'Potential clients' },
   'connections.purposeBoth': { ru: 'Оба варианта', az: 'Hər ikisi', en: 'Both options' },
+
+  // Honest provider integration classification
+  'connections.integration.real': { ru: 'Реальная интеграция', az: 'Real inteqrasiya', en: 'Real integration' },
+  'connections.integration.architecture_ready': { ru: 'Архитектура готова', az: 'Arxitektura hazırdır', en: 'Architecture ready' },
+  'connections.integration.mock': { ru: 'Демо-заглушка', az: 'Demo-yol', en: 'Mock stub' },
+  'connections.integration.unsupported': { ru: 'Не поддерживается', az: 'Dəstəklənmir', en: 'Unsupported' },
+  'connections.notSupported': { ru: 'Официально недоступно:', az: 'Rəsmi mövcud deyil:', en: 'Not available via official API:' },
+  'connections.openAuthorize': { ru: 'Открываем страницу авторизации провайдера…', az: 'Provayderin authorize səhifəsi açılır…', en: 'Opening provider authorize page…' },
+  'connections.needsCredentials': { ru: 'Сначала настройте учётные данные провайдера в переменных окружения', az: 'Əvvəlcə provayder credential-larını env-də qurun', en: 'Configure provider credentials in environment variables first' },
+
+  // Capability notes (official-API limits)
+  'connections.cap.private_account_access': { ru: 'доступ к приватным аккаунтам', az: 'gizli hesablara giriş', en: 'private account access' },
+  'connections.cap.following_list_scraping': { ru: 'сбор списка подписок', az: 'izləmə siyahısının yığılması', en: 'following-list scraping' },
+  'connections.cap.scrape_without_consent': { ru: 'скрапинг без согласия', az: 'razılıqsız scraping', en: 'scraping without consent' },
+  'connections.cap.private_profile_scraping': { ru: 'скрапинг приватных профилей', az: 'gizli profillərin scraping-i', en: 'private profile scraping' },
+  'connections.cap.group_member_enumeration_official': { ru: 'перечисление участников групп (официально)', az: 'qrup iştirakçılarının sayılması (rəsmi)', en: 'group member enumeration (official)' },
+  'connections.cap.following_list': { ru: 'список подписок', az: 'izləmə siyahısı', en: 'following list' },
+  'connections.cap.group_member_enumeration_official_api': { ru: 'перечисление участников групп (Cloud API)', az: 'qrup iştirakçılarının sayılması (Cloud API)', en: 'group member enumeration (Cloud API)' },
 
   // Search Modes
   'searchMode.nameUsername': { ru: 'По названию / username', az: 'Ad / username üzrə', en: 'By name / username' },
