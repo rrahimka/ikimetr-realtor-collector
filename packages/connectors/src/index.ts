@@ -20,6 +20,7 @@ export * from './telegram-authorized';
 export * from './telegram-mtproto';
 export * from './telegram-mtproto-connector';
 export * from './telegram-session-restore';
+export * from './telegram-discovery';
 export * from './secret-storage';
 export * from './paths';
 export * from './telegram-entity-guard';

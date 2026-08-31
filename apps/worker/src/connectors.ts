@@ -19,6 +19,9 @@ import {
   runBinaAgencyConnector,
   restoreTelegramClient,
   resolveTelegramSourceEntity,
+  resolveAndEnsureTelegramSource,
+  isTelegramFloodWaitError,
+  type ResolvedTelegramSource,
   fetchTelegramAuthorizedMessages,
   scanResultToConnectorResult,
   type BinaConnectorResult,
@@ -73,13 +76,6 @@ const TELEGRAM_MAX_MESSAGES_PER_RUN = 100;
 /** Capped retries for transient Telegram failures; FloodWait is not retried. */
 const TELEGRAM_MAX_ATTEMPTS = 2;
 
-function isFloodWaitError(error: unknown): { seconds: number } | undefined {
-  if (!(error instanceof Error)) return undefined;
-  if (error.constructor?.name !== 'FloodWaitError' && error.name !== 'FloodWaitError') return undefined;
-  const seconds = Number((error as { seconds?: unknown }).seconds);
-  return Number.isFinite(seconds) && seconds > 0 ? { seconds } : undefined;
-}
-
 /**
  * Authorized MTProto connector for Telegram channels/supergroups.
  *
@@ -114,14 +110,43 @@ async function crawlTelegramAuthorizedMTProto(
   const boundedLimit = Math.min(Math.max(limit, 1), TELEGRAM_MAX_MESSAGES_PER_RUN);
 
   try {
-    // One exact lookup for the configured source — unrelated chats in the
-    // account are never enumerated, resolved or read.
-    const sourceEntity = await resolveTelegramSourceEntity(restoreResult.client, locator);
-    if (!sourceEntity) {
-      throw new Error('telegram_dialog_not_found');
+    // Resolve (and, when policy allows, auto-join) the configured source with a
+    // single targeted lookup — unrelated chats in the account are never
+    // enumerated, resolved or read. A PUBLIC channel the account has not joined
+    // is auto-joined here; a PRIVATE/invite-only source returns needs_approval.
+    let sourceEntity: ResolvedTelegramSource | undefined;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= TELEGRAM_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const ensured = await resolveAndEnsureTelegramSource(restoreResult.client, locator, {
+          autoJoinPublic: true,
+        });
+        if (ensured.verdict === 'needs_approval') {
+          throw new Error('telegram_source_requires_approval');
+        }
+        if (ensured.verdict === 'rejected' || ensured.verdict === 'blocked' || !ensured.source) {
+          throw new Error('telegram_dialog_not_found');
+        }
+        sourceEntity = ensured.source;
+        break;
+      } catch (error) {
+        lastError = error;
+        const floodWait = isTelegramFloodWaitError(error);
+        if (!floodWait) break; // Never retry a FloodWait immediately.
+        if (attempt === TELEGRAM_MAX_ATTEMPTS) break;
+        // Honour Telegram's requested wait, capped so a worker tick cannot hang.
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, Math.min(floodWait.seconds, 30) * 1_000);
+        });
+      }
     }
 
-    let lastError: unknown;
+    if (!sourceEntity) {
+      const floodWait = isTelegramFloodWaitError(lastError);
+      if (floodWait) throw new Error(`telegram_flood_wait_${floodWait.seconds}s`);
+      throw lastError instanceof Error ? lastError : new Error('telegram_fetch_failed');
+    }
+
     for (let attempt = 1; attempt <= TELEGRAM_MAX_ATTEMPTS; attempt += 1) {
       try {
         const { scanResult, highestMessageId } = await fetchTelegramAuthorizedMessages(restoreResult.client, {
@@ -138,7 +163,7 @@ async function crawlTelegramAuthorizedMTProto(
         return result;
       } catch (error) {
         lastError = error;
-        const floodWait = isFloodWaitError(error);
+        const floodWait = isTelegramFloodWaitError(error);
         if (!floodWait) break; // Never retry a FloodWait immediately.
         if (attempt === TELEGRAM_MAX_ATTEMPTS) break;
         // Honour Telegram's requested wait, capped so a worker tick cannot hang.
@@ -148,7 +173,7 @@ async function crawlTelegramAuthorizedMTProto(
       }
     }
 
-    const floodWait = isFloodWaitError(lastError);
+    const floodWait = isTelegramFloodWaitError(lastError);
     if (floodWait) throw new Error(`telegram_flood_wait_${floodWait.seconds}s`);
     throw lastError instanceof Error ? lastError : new Error('telegram_fetch_failed');
   } finally {

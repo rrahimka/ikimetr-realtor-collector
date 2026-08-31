@@ -325,3 +325,37 @@ export function resolveLeadSourceUrl(lead: {
 }): string | null {
   return getSafeSourceUrl(lead.sourceUrl);
 }
+
+/**
+ * Builds a canonical public Telegram deep link from a username/handle.
+ * Accepts `@handle`, `handle`, `t.me/handle`, or `https://t.me/handle`; returns
+ * `https://t.me/<handle>` or `null` when no valid handle is present. Never
+ * fabricates links for private (`+` invite) hashes.
+ */
+export function buildTelegramDeepLink(username: string | null | undefined): string | null {
+  if (!username || typeof username !== 'string') return null;
+  const cleaned = username.trim().replace(/^@/, '');
+  if (!cleaned || cleaned.startsWith('+') || cleaned.includes('/') || cleaned.includes(' ')) return null;
+  if (!/^[a-zA-Z0-9_]{4,32}$/.test(cleaned)) return null;
+  return `https://t.me/${cleaned}`;
+}
+
+/**
+ * Resolves the best clickable deep link for a discovered/collected source.
+ * Telegram sources get a `t.me` link from the username; everything else falls
+ * back to the persisted (already safety-validated) source URL. Returns `null`
+ * when nothing safe is available — callers must render plain text, never a
+ * fabricated href.
+ */
+export function sourceDeepLink(input: {
+  platform?: string | null | undefined;
+  username?: string | null | undefined;
+  sourceUrl?: string | null | undefined;
+}): string | null {
+  const platform = (input.platform ?? '').toLowerCase();
+  if (platform === 'telegram' || platform === 'telegram_channel' || platform === 'telegram_group') {
+    const tg = buildTelegramDeepLink(input.username);
+    if (tg) return tg;
+  }
+  return getSafeSourceUrl(input.sourceUrl);
+}
