@@ -46,6 +46,26 @@ export function getAuthState(sessionId = TELEGRAM_SESSION_ID) {
   return authStates.get(sessionId) || { status: 'disconnected' };
 }
 
+/**
+ * Client-safe view of the auth state.
+ *
+ * The transient state carries `phoneNumber` and the Telegram `phoneCodeHash`,
+ * neither of which the UI needs and both of which belong to an in-flight
+ * authorization transaction. Only the status and, once authorized, the account
+ * identity are ever serialized into an API response.
+ */
+export function getPublicAuthState(sessionId = TELEGRAM_SESSION_ID) {
+  const state = getAuthState(sessionId) as {
+    status?: string;
+    accountInfo?: unknown;
+    [key: string]: unknown;
+  };
+  if (state.status === 'connected' && state.accountInfo) {
+    return { status: state.status, accountInfo: state.accountInfo };
+  }
+  return { status: state.status ?? 'disconnected' };
+}
+
 export function setAuthState(state: { status: string; [key: string]: unknown }, sessionId = TELEGRAM_SESSION_ID) {
   authStates.set(sessionId, state);
 }

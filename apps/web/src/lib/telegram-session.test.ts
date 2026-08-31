@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getTelegramApiCredentials,
   getAuthState,
+  getPublicAuthState,
   setAuthState,
   clearAuthState,
 } from './telegram-session';
@@ -44,5 +45,32 @@ describe('telegram-session', () => {
     expect(getAuthState('session-a').status).toBe('waiting_code');
     expect(getAuthState('session-b').status).toBe('connected');
     expect(getAuthState('default').status).toBe('disconnected');
+  });
+});
+
+describe('getPublicAuthState — response redaction', () => {
+  it('never exposes phoneCodeHash or the phone number of an in-flight auth', async () => {
+    setAuthState({ status: 'waiting_code', phoneNumber: '+994501234567', phoneCodeHash: 'secret_hash' });
+
+    const serialized = JSON.stringify(getPublicAuthState());
+    expect(getPublicAuthState()).toEqual({ status: 'waiting_code' });
+    expect(serialized).not.toContain('secret_hash');
+    expect(serialized).not.toContain('+994501234567');
+    await clearAuthState();
+  });
+
+  it('does not leak the transient hash during the 2FA step either', async () => {
+    setAuthState({ status: 'waiting_2fa', phoneNumber: '+994501234567', phoneCodeHash: 'secret_hash' });
+    expect(getPublicAuthState()).toEqual({ status: 'waiting_2fa' });
+    await clearAuthState();
+  });
+
+  it('exposes the account identity once connected, but still no secrets', async () => {
+    setAuthState({ status: 'connected', accountInfo: { id: 42, username: 'baku_realtor' } });
+    expect(getPublicAuthState()).toEqual({
+      status: 'connected',
+      accountInfo: { id: 42, username: 'baku_realtor' },
+    });
+    await clearAuthState();
   });
 });

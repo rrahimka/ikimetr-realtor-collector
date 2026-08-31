@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   getOrCreateClient,
   getAuthState,
+  getPublicAuthState,
   setAuthState,
   clearAuthState,
   formatAccountInfo,
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         ok: true,
-        state: getAuthState(),
+        state: getPublicAuthState(),
         message: 'Telegram authorization successful.',
       });
     }
@@ -160,13 +161,13 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         ok: true,
-        state: getAuthState(),
+        state: getPublicAuthState(),
         message: 'Telegram 2FA authorization successful.',
       });
     }
 
     if (body.action === 'status') {
-      return NextResponse.json({ ok: true, state: getAuthState() });
+      return NextResponse.json({ ok: true, state: getPublicAuthState() });
     }
 
     if (body.action === 'cancel') {
@@ -191,7 +192,7 @@ export async function POST(request: Request) {
 export async function GET() {
   try {
     await requireApi();
-    return NextResponse.json({ ok: true, state: getAuthState() });
+    return NextResponse.json({ ok: true, state: getPublicAuthState() });
   } catch (error) {
     return apiError(error);
   }

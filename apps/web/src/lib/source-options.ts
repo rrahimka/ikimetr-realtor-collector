@@ -418,6 +418,39 @@ export type SearchSurfaceMode =
   | 'agency_name'
   | 'phone_crossmatch';
 
+/** Minimal shape of the connections store needed to judge connectivity. */
+export type SocialConnectionAccounts = Partial<
+  Record<SocialPlatform, { status?: string } | undefined>
+>;
+
+/**
+ * Decides whether a social source may actually be executed.
+ *
+ * A source must never be treated as usable merely because of its type or
+ * locator: the matching account must genuinely be connected. Telegram used to
+ * be reported as connected unconditionally, which queued runs that could never
+ * authenticate and made the UI claim a working integration that did not exist.
+ *
+ * Pure and side-effect free so it can be unit tested without Next.js or a DB.
+ */
+export function isSocialSourceConnected(
+  sourceType: string,
+  locator: string,
+  accounts: SocialConnectionAccounts | undefined,
+): boolean {
+  const sType = (sourceType || '').trim().toLowerCase();
+  const sLoc = (locator || '').trim().toLowerCase();
+  const connected = (platform: SocialPlatform) => accounts?.[platform]?.status === 'connected';
+
+  if (sourceType === 'test_fixture') return true;
+  if (sType.startsWith('instagram') || sLoc.includes('instagram.com')) return connected('instagram');
+  if (sType.startsWith('tiktok') || sLoc.includes('tiktok.com')) return connected('tiktok');
+  if (sType.startsWith('facebook') || sLoc.includes('facebook.com')) return connected('facebook');
+  if (sType.startsWith('whatsapp') || sLoc.includes('whatsapp.com')) return connected('whatsapp');
+  if (sType.startsWith('telegram') || sLoc.includes('t.me')) return connected('telegram');
+  return false;
+}
+
 export type SearchPurpose = 'realtors' | 'leads' | 'both';
 
 export const ALL_SEARCH_SURFACES: { id: SearchSurfaceMode; labelKey: string }[] = [

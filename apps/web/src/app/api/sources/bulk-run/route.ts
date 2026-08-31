@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getRepositories } from '../../../../lib/db';
 import { requireApi, apiError } from '../../../../lib/http';
-import { getSourceCategory, isSourceSupported } from '../../../../lib/source-options';
+import { getSourceCategory, isSourceSupported, isSocialSourceConnected } from '../../../../lib/source-options';
 import { getConnectionsStore } from '../../../../lib/connections-store';
 
 export async function POST(request: Request) {
@@ -93,24 +93,13 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Check if social account is connected
-        let isConnected = false;
-        const sType = String(source.type);
-        const sLoc = source.locator.toLowerCase();
-
-        if (sType.startsWith('instagram') || sLoc.includes('instagram.com')) {
-          isConnected = connectionsStore.accounts.instagram?.status === 'connected';
-        } else if (sType.startsWith('tiktok') || sLoc.includes('tiktok.com')) {
-          isConnected = connectionsStore.accounts.tiktok?.status === 'connected';
-        } else if (sType.startsWith('facebook') || sLoc.includes('facebook.com')) {
-          isConnected = connectionsStore.accounts.facebook?.status === 'connected';
-        } else if (sType.startsWith('whatsapp') || sLoc.includes('whatsapp.com')) {
-          isConnected = connectionsStore.accounts.whatsapp?.status === 'connected';
-        } else if (sType.startsWith('telegram') || sLoc.includes('t.me')) {
-          isConnected = true;
-        } else if (source.type === 'test_fixture') {
-          isConnected = true;
-        }
+        // A social source is executable only when its account is genuinely
+        // connected — never merely because of its type or locator.
+        const isConnected = isSocialSourceConnected(
+          String(source.type),
+          source.locator,
+          connectionsStore.accounts,
+        );
 
         if (!isConnected) {
           skippedCount++;
