@@ -41,13 +41,13 @@ class ChannelPrivateError extends Error {}
  */
 function discoveryClient(entity: unknown, opts: { failJoinWith?: Error } = {}) {
   let joined = false;
-  const invoke = vi.fn(async (_req: unknown) => {
+  const invoke = vi.fn(() => {
     if (opts.failJoinWith) throw opts.failJoinWith;
     joined = true;
     return { id: asGramLong(1) };
   });
   const client = {
-    getEntity: (peer: unknown) => {
+    getEntity: () => {
       if (entity instanceof Error) return Promise.reject(entity);
       // After a successful join, a left entity becomes joined.
       if (joined && entity instanceof Api.Channel && (entity as { left?: boolean }).left) {

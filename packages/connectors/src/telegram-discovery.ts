@@ -135,7 +135,7 @@ export interface TelegramRelevanceScore {
 export function scoreTelegramChannelRelevance(
   title: string | undefined,
   about: string | undefined,
-  memberCount?: number | undefined,
+  memberCount?: number,
 ): TelegramRelevanceScore {
   const titleText = (title ?? '').toLowerCase();
   const aboutText = (about ?? '').toLowerCase();

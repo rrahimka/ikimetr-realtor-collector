@@ -18,7 +18,6 @@ import {
   crawlYeniEmlakAz,
   runBinaAgencyConnector,
   restoreTelegramClient,
-  resolveTelegramSourceEntity,
   resolveAndEnsureTelegramSource,
   isTelegramFloodWaitError,
   type ResolvedTelegramSource,
