@@ -46,7 +46,9 @@ export async function GET(request: Request) {
       );
     }
 
-    const { code, state, error, error_description } = parsed.data;
+    // The authorization code is deliberately not used: this local-only MVP
+    // records receipt only and never performs the code -> token exchange.
+    const { state, error, error_description } = parsed.data;
 
     if (error) {
       return NextResponse.json(

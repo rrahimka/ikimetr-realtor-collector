@@ -124,9 +124,12 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
 
     // Switch to Social Networks tab -> verifies Social Connections Panel is rendered
     await socialTab.click();
-    await expect(page.getByText('Instagram')).toBeVisible();
-    await expect(page.getByText('TikTok')).toBeVisible();
-    await expect(page.getByText('Facebook')).toBeVisible();
+    // `exact: true` — each platform also renders an integration-requirement line
+    // (e.g. "Instagram Graph API requires a Meta app + business review"), which
+    // would otherwise make the platform title selector ambiguous.
+    await expect(page.getByText('Instagram', { exact: true })).toBeVisible();
+    await expect(page.getByText('TikTok', { exact: true })).toBeVisible();
+    await expect(page.getByText('Facebook', { exact: true })).toBeVisible();
     await expect(page.getByText('WhatsApp', { exact: true })).toBeVisible();
     await expect(page.getByText('Telegram — MTProto Connector')).toBeVisible();
 
