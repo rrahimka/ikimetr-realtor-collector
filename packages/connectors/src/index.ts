@@ -24,6 +24,7 @@ export * from './telegram-discovery';
 export * from './discovery-ledger';
 export * from './discovery-orchestrator';
 export * from './secret-storage';
+export * from './session-compat';
 export * from './paths';
 export * from './telegram-entity-guard';
 export * from './tiktok';
