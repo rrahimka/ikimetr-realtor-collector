@@ -4,6 +4,7 @@ import { getRepositories } from '../../../lib/db';
 import { getLang } from '../../../lib/lang';
 import { formatDateTime, t, tEnum, tReason } from '../../../lib/i18n';
 import { ApiButton } from '../../../components/api-button';
+import { sourceDeepLink } from '@ikimetr/core';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,23 +129,26 @@ export default async function ContactDetail({
               </tr>
             </thead>
             <tbody>
-              {evidence.map((e) => (
-                <tr key={e.id}>
-                  <td>
-                    {e.source_url.startsWith('http') ? (
-                      <a href={e.source_url} target="_blank" rel="noopener noreferrer">
-                        {e.source_url}
-                      </a>
-                    ) : (
-                      e.source_url
-                    )}
-                  </td>
-                  <td><span className="badge">{e.location_type}</span></td>
-                  <td>{e.excerpt}</td>
-                  <td>{e.platform}</td>
-                  <td>{formatDateTime(lang, e.discovered_at)}</td>
-                </tr>
-              ))}
+              {evidence.map((e) => {
+                const link = sourceDeepLink({ platform: e.platform, sourceUrl: e.source_url });
+                return (
+                  <tr key={e.id}>
+                    <td>
+                      {link ? (
+                        <a href={link} target="_blank" rel="noopener noreferrer">
+                          {link}
+                        </a>
+                      ) : (
+                        e.source_url
+                      )}
+                    </td>
+                    <td><span className="badge">{e.location_type}</span></td>
+                    <td>{e.excerpt}</td>
+                    <td>{e.platform}</td>
+                    <td>{formatDateTime(lang, e.discovered_at)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

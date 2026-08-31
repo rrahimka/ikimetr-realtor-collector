@@ -4,20 +4,20 @@ import { formatDateTime, t, tCsvError, tEnum, tReason } from './i18n';
 describe('i18n', () => {
   it('defaults to Russian', () => {
     expect(t('ru', 'login.submit')).toBe('Войти');
-    expect(t('ru', 'nav.contacts')).toBe('Контакты');
+    expect(t('ru', 'nav.contacts')).toBe('Риелторы');
     expect(t('ru', 'dashboard.title')).toBe('Панель');
     expect(t('ru', 'detail.colPlatform')).toBe('Платформа');
   });
 
   it('translates essential actions to Azerbaijani and English', () => {
     expect(t('az', 'login.submit')).toBe('Daxil ol');
-    expect(t('az', 'nav.contacts')).toBe('Əlaqələr');
+    expect(t('az', 'nav.contacts')).toBe('Rieltorlar');
     expect(t('az', 'contacts.csvExport')).toBe('Siyahını ixrac et');
     expect(t('az', 'import.submit')).toBe('İdxal et');
     expect(t('az', 'common.logout')).toBe('Çıxış');
 
     expect(t('en', 'login.submit')).toBe('Sign in');
-    expect(t('en', 'nav.contacts')).toBe('Contacts');
+    expect(t('en', 'nav.contacts')).toBe('Realtors');
     expect(t('en', 'contacts.csvExport')).toBe('Export list');
     expect(t('en', 'common.logout')).toBe('Logout');
   });

@@ -3,6 +3,7 @@ import { getLang } from '../lib/lang';
 import { t, type Lang } from '../lib/i18n';
 import { AutoRefresh } from '../components/auto-refresh';
 import { QuickRunPanel } from '../components/quick-run-panel';
+import { CollectorRunner } from '../components/collector-runner';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,7 @@ export default async function Dashboard() {
   return (
     <>
       <AutoRefresh hasActiveRuns={s.active > 0} />
+      <CollectorRunner lang={lang} />
       <p className="eyebrow">{t(lang, 'dashboard.eyebrow')}</p>
       <h1>{t(lang, 'dashboard.title')}</h1>
 

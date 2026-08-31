@@ -4,10 +4,8 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { getLang } from '../lib/lang';
 import { t } from '../lib/i18n';
-import { LangSwitcher } from '../components/lang-switcher';
 import { ToastContainer } from '../components/toast';
 import { SideNav } from '../components/side-nav';
-import { CollectorRunner } from '../components/collector-runner';
 import { verifySessionToken } from '../lib/auth';
 
 export const metadata: Metadata = {
@@ -29,35 +27,25 @@ export default async function Layout({ children }: { children: React.ReactNode }
       <body>
         {isAuthenticated ? (
           <div className="shell">
-            <aside className="sidebar">
+            <header className="top-nav">
               <Link href="/" className="brand-link" title={t(lang, 'nav.dashboard')}>
                 <div className="brand">
                   IKIMETR <span>COLLECTOR</span>
                 </div>
               </Link>
-              <nav>
-                <SideNav lang={lang} pendingReviewCount={pendingReviewCount} />
-              </nav>
-            </aside>
+              <SideNav lang={lang} pendingReviewCount={pendingReviewCount} />
+              <div className="top-nav-right">
+                <a href="/api/logout" className="logout-btn" title={t(lang, 'common.logout')}>
+                  {t(lang, 'common.logout')}
+                </a>
+              </div>
+            </header>
             <main>
-              <CollectorRunner lang={lang} />
-              <header className="global-header">
-                <div className="header-left"></div>
-                <div className="header-right">
-                  <LangSwitcher lang={lang} />
-                  <a href="/api/logout" className="logout-btn" title={t(lang, 'common.logout')}>
-                    {t(lang, 'common.logout')}
-                  </a>
-                </div>
-              </header>
               {children}
             </main>
           </div>
         ) : (
           <div className="login-shell">
-            <header className="login-header">
-              <LangSwitcher lang={lang} />
-            </header>
             <main className="login-main">{children}</main>
           </div>
         )}

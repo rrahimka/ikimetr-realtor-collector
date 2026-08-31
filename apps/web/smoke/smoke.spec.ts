@@ -223,22 +223,14 @@ test('collector pipeline: login → fixture source → run → worker → contac
   expect(csv).toContain("'+994501234567");
 });
 
-test('language toggle and CSV import report', async ({ page }) => {
+test('CSV import report (Russian-only UI)', async ({ page }) => {
   await page.goto('/login');
   await page.fill('input[name="password"]', 'smoke-test-password');
   await page.getByRole('button', { name: 'Войти' }).first().click();
   await expect(page).toHaveURL('/');
 
-  // Switch to Azerbaijani, verify persistence after reload, then switch back.
-  await page.getByRole('button', { name: 'AZ' }).first().click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('İdarəetmə paneli');
-  await expect(page.getByRole('link', { name: 'Əlaqələr' })).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('İdarəetmə paneli');
-  await page.getByRole('button', { name: 'RU' }).first().click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');
-  await page.reload();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Панель');
+  // The language switcher has been removed; the UI is Russian-only. The default
+  // locale is `ru`, so all visible labels below are Russian.
 
   // Reject an invalid CSV with a localised error.
   await page.goto('/contacts');

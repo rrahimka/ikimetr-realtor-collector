@@ -7,7 +7,7 @@ const dict: Record<string, Entry> = {
   'nav.sources': { ru: 'Источники', az: 'Mənbələr', en: 'Sources' },
   'nav.connections': { ru: 'Подключения', az: 'Qoşulmalar', en: 'Connections' },
   'nav.keywords': { ru: 'Ключевые слова', az: 'Açar sözlər', en: 'Keywords' },
-  'nav.contacts': { ru: 'Контакты', az: 'Əlaqələr', en: 'Contacts' },
+  'nav.contacts': { ru: 'Риелторы', az: 'Rieltorlar', en: 'Realtors' },
   'nav.leads': { ru: 'Лиды', az: 'Lidlər', en: 'Leads' },
   'nav.runs': { ru: 'Запуски', az: 'İşlər', en: 'Runs' },
   'nav.review': { ru: 'Проверка', az: 'Yoxlama', en: 'Review' },

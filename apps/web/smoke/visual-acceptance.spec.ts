@@ -33,26 +33,28 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
     await expect(page.getByText('1-ч-7-G-U-F')).toBeVisible();
   });
 
-  test('3. Authenticated header controls, logo navigation, and no duplicate sidebar controls', async ({ page }) => {
+  test('3. Authenticated top-nav controls, logo navigation, and no sidebar / language switcher', async ({ page }) => {
     await page.goto('/login');
     await page.fill('input[name="password"]', 'smoke-test-password');
     await page.getByRole('button', { name: 'Войти' }).first().click();
     await expect(page).toHaveURL('/');
 
-    // 1. Verify top-right header controls exist
-    const header = page.locator('.global-header');
+    // 1. Verify the sticky top navigation bar is present and carries the logout link.
+    const header = page.locator('.top-nav');
     await expect(header).toBeVisible();
-    await expect(header.getByRole('button', { name: 'RU' })).toBeVisible();
-    await expect(header.getByRole('button', { name: 'AZ' })).toBeVisible();
-    await expect(header.getByRole('button', { name: 'EN' })).toBeVisible();
+    // Russian-only UI: no language switcher buttons.
+    await expect(header.getByRole('button', { name: 'RU' })).toHaveCount(0);
+    await expect(header.getByRole('button', { name: 'AZ' })).toHaveCount(0);
+    await expect(header.getByRole('button', { name: 'EN' })).toHaveCount(0);
     await expect(header.getByRole('link', { name: /выйти/i })).toBeVisible();
 
-    // 2. Verify sidebar DOES NOT contain duplicate langbar or duplicate logout
-    const sidebar = page.locator('.sidebar');
-    await expect(sidebar.locator('.langbar')).toHaveCount(0);
-    await expect(sidebar.getByRole('link', { name: /выйти/i })).toHaveCount(0);
+    // 2. The legacy sidebar is gone.
+    await expect(page.locator('.sidebar')).toHaveCount(0);
 
-    // 3. Verify Logo / Brand link navigates to /
+    // 3. The contacts nav entry now reads "Риелторы" (Russian-only label).
+    await expect(page.getByRole('link', { name: 'Риелторы' }).first()).toBeVisible();
+
+    // 4. Verify Logo / Brand link navigates to /
     await page.goto('/sources');
     await expect(page).toHaveURL('/sources');
     const logoLink = page.locator('.brand-link');
@@ -61,7 +63,7 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
     await expect(page).toHaveURL('/');
   });
 
-  test('4. Geometric scroll test: Sidebar remains fixed at top: 0 during long page scrolls', async ({ page }) => {
+  test('4. Geometric scroll test: top-nav remains fixed at top: 0 during long page scrolls', async ({ page }) => {
     await page.goto('/login');
     await page.fill('input[name="password"]', 'smoke-test-password');
     await page.getByRole('button', { name: 'Войти' }).first().click();
@@ -71,11 +73,11 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
 
     for (const route of routes) {
       await page.goto(route);
-      const sidebar = page.locator('.sidebar');
-      await expect(sidebar).toBeVisible();
+      const topNav = page.locator('.top-nav');
+      await expect(topNav).toBeVisible();
 
       // Measure initial position
-      const initialBox = await sidebar.boundingBox();
+      const initialBox = await topNav.boundingBox();
       expect(initialBox).not.toBeNull();
       expect(initialBox!.y).toBe(0);
 
@@ -84,9 +86,9 @@ test.describe('Real Browser Visual Acceptance & Interaction Suite', () => {
       await page.waitForTimeout(100);
 
       // Measure scrolled position
-      const scrolledBox = await sidebar.boundingBox();
+      const scrolledBox = await topNav.boundingBox();
       expect(scrolledBox).not.toBeNull();
-      // Sidebar top must remain effectively at viewport top (0)
+      // The sticky top nav must remain effectively at viewport top (0)
       expect(Math.round(scrolledBox!.y)).toBe(0);
     }
   });
