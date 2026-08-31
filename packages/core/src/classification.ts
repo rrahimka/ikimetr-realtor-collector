@@ -176,10 +176,16 @@ export function classifyEvidence(input: ClassifyInput): Classification {
     } else if (
       (type === 'agent' || type === 'agency') &&
       confidence >= REALTOR_AUTO_ACCEPT_THRESHOLD &&
-      !isGenuineSocialNew
+      !isGenuineSocialNew &&
+      // WhatsApp is gated exclusively by the realtor-only-group approval above
+      // (origin === 'whatsapp' && isRealtorOnlyWhatsAppGroup). A mixed or merely
+      // approved WhatsApp group must stay in manual review and never auto-confirm
+      // at >=90%, because those groups are noisy and not curated like Telegram
+      // channels.
+      origin !== 'whatsapp'
     ) {
       // High-confidence realtor classification with a valid Azerbaijan mobile:
-      // auto-confirm (covers website / Telegram / WhatsApp / verified social).
+      // auto-confirm (covers website / Telegram / verified social).
       autoAccepted = true;
       autoAcceptPolicy = AUTO_ACCEPT_REALTOR_POLICY;
     }
