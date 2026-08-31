@@ -526,3 +526,74 @@ describe('cross-source deduplication (Part 11 / 12)', () => {
     expect(contact.originGroups).toContain('whatsapp');
   });
 });
+
+describe('discovery ledger (Subproject A)', () => {
+  it('upserts a candidate, defaults status to DISCOVERED, and does not duplicate on conflict', () => {
+    const repos = setup();
+    const first = repos.discovery.upsertCandidate({
+      candidateKey: 'telegram:bakı_əmlak_agentliyi',
+      platform: 'telegram',
+      strategy: 'agency',
+      seed: 'Bakı Əmlak Agentliyi',
+      title: 'Bakı Əmlak Agentliyi',
+      relevanceScore: 0.62,
+      relevanceReasons: ['az_keyword:əmlak'],
+      status: 'DISCOVERED',
+    });
+    expect(first).toMatchObject({ candidateKey: 'telegram:bakı_əmlak_agentliyi', status: 'DISCOVERED', relevanceScore: 0.62 });
+
+    // Re-inserting the same key must NOT create a second row. Mutable fields
+    // (score) are refreshed by the ON CONFLICT UPDATE, but `status` is left
+    // out of the update set so it stays authoritative from the first insert.
+    const again = repos.discovery.upsertCandidate({
+      candidateKey: 'telegram:bakı_əmlak_agentliyi',
+      platform: 'telegram',
+      strategy: 'agency',
+      seed: 'Bakı Əmlak Agentliyi',
+      title: 'Bakı Əmlak Agentliyi',
+      relevanceScore: 0.99,
+      relevanceReasons: ['az_keyword:əmlak'],
+    });
+    expect(again?.relevanceScore).toBe(0.99);
+    expect(again?.status).toBe('DISCOVERED');
+    expect(repos.discovery.listByStatus('DISCOVERED')).toHaveLength(1);
+  });
+
+  it('moves a candidate through status transitions and records a join', () => {
+    const repos = setup();
+    repos.discovery.upsertCandidate({
+      candidateKey: 'telegram:real_estate_baku',
+      platform: 'telegram',
+      strategy: 'keyword',
+      seed: 'real estate baku',
+    });
+    expect(repos.discovery.get('telegram:real_estate_baku')?.status).toBe('DISCOVERED');
+
+    const rejected = repos.discovery.updateStatus('telegram:real_estate_baku', 'REJECTED', { error: 'low_relevance' });
+    expect(rejected).toMatchObject({ status: 'REJECTED', error: 'low_relevance' });
+
+    const joined = repos.discovery.recordJoin('telegram:real_estate_baku', 42);
+    expect(joined).toMatchObject({ status: 'JOINED', sourceId: 42 });
+    expect(joined?.joinedAt).toBeTruthy();
+    expect(repos.discovery.listByStatus('JOINED')).toHaveLength(1);
+    expect(repos.discovery.listByStatus('REJECTED')).toHaveLength(0);
+  });
+
+  it('returns status counts grouped by status', () => {
+    const repos = setup();
+    repos.discovery.upsertCandidate({ candidateKey: 'a', platform: 'telegram', strategy: 'agency', seed: 'a' });
+    repos.discovery.upsertCandidate({ candidateKey: 'b', platform: 'telegram', strategy: 'agency', seed: 'b' });
+    repos.discovery.upsertCandidate({ candidateKey: 'c', platform: 'telegram', strategy: 'agency', seed: 'c' });
+    repos.discovery.updateStatus('b', 'JOINED', { sourceId: 1 });
+
+    const counts = repos.discovery.counts();
+    expect(counts.DISCOVERED).toBe(2);
+    expect(counts.JOINED).toBe(1);
+  });
+
+  it('returns undefined when updating a missing candidate', () => {
+    const repos = setup();
+    expect(repos.discovery.updateStatus('telegram:does_not_exist', 'REJECTED')).toBeUndefined();
+    expect(repos.discovery.recordJoin('telegram:does_not_exist', 1)).toBeUndefined();
+  });
+});

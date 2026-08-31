@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@ikimetr/core": "workspace:*",
+    "@ikimetr/database": "workspace:*",
     "apify-client": "^2.22.1",
     "cheerio": "^1.1.2",
     "csv-parse": "^6.1.0",

@@ -199,6 +199,58 @@ function mapLead(row: Record<string, unknown>): LeadRecord {
   };
 }
 
+export type DiscoveryCandidateStatus =
+  | 'DISCOVERED'
+  | 'QUEUED'
+  | 'VERIFIED'
+  | 'JOINED'
+  | 'ACTIVE'
+  | 'REJECTED'
+  | 'NEEDS_APPROVAL'
+  | 'COOLDOWN'
+  | 'BLOCKED'
+  | 'DEAD';
+
+export interface DiscoveryCandidateRecord {
+  candidateKey: string;
+  platform: string;
+  strategy: string;
+  seed: string;
+  title: string;
+  url?: string | undefined;
+  username?: string | undefined;
+  relevanceScore: number;
+  relevanceReasons: string[];
+  status: DiscoveryCandidateStatus;
+  sourceId?: number | undefined;
+  joinedAt?: string | undefined;
+  lastCheckedAt?: string | undefined;
+  error?: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapDiscoveryCandidate(row: Record<string, unknown>): DiscoveryCandidateRecord {
+  return {
+    candidateKey: row.candidate_key as string,
+    platform: row.platform as string,
+    strategy: row.strategy as string,
+    seed: row.seed as string,
+    title: (row.title as string) ?? '',
+    url: (row.url as string | null) ?? undefined,
+    username: (row.username as string | null) ?? undefined,
+    relevanceScore: (row.relevance_score as number) ?? 0,
+    relevanceReasons: JSON.parse((row.relevance_reasons_json as string) || '[]') as string[],
+    status: row.status as DiscoveryCandidateStatus,
+    sourceId: (row.source_id as number | null) ?? undefined,
+    joinedAt: (row.joined_at as string | null) ?? undefined,
+    lastCheckedAt: (row.last_checked_at as string | null) ?? undefined,
+    error: (row.error as string | null) ?? undefined,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
 export function createRepositories(db: CollectorDatabase) {
   const audit = {
     record(action: string, entityType: string, entityId: number, details: unknown) { db.prepare('INSERT INTO audit_events(action,entity_type,entity_id,details_json,created_at) VALUES(?,?,?,?,?)').run(action, entityType, entityId, JSON.stringify(details), now()); },
@@ -270,6 +322,49 @@ export function createRepositories(db: CollectorDatabase) {
     create(value:string,language:'AZ'|'RU'|'EN'|'mixed'){const result=db.prepare('INSERT OR IGNORE INTO keywords(value,language,created_at) VALUES(?,?,?)').run(value.trim(),language,now());if(!result.lastInsertRowid)return db.prepare('SELECT * FROM keywords WHERE value=?').get(value.trim()) as {id:number;value:string;language:string};return{id:Number(result.lastInsertRowid),value:value.trim(),language};},
     list(){return db.prepare('SELECT * FROM keywords ORDER BY language,value').all() as Array<{id:number;value:string;language:string}>;},
     remove(id:number){return db.prepare('DELETE FROM keywords WHERE id=?').run(id).changes>0;},
+  };
+  const discovery = {
+    upsertCandidate(input: { candidateKey: string; platform: string; strategy: string; seed: string; title?: string; url?: string; username?: string; relevanceScore?: number; relevanceReasons?: string[]; status?: DiscoveryCandidateStatus }) {
+      const time = now();
+      const status = input.status ?? 'DISCOVERED';
+      db.prepare(`INSERT INTO discovery_candidates(candidate_key,platform,strategy,seed,title,url,username,relevance_score,relevance_reasons_json,status,last_checked_at,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(candidate_key) DO UPDATE SET
+          platform=excluded.platform, strategy=excluded.strategy, seed=excluded.seed, title=excluded.title,
+          url=excluded.url, username=excluded.username, relevance_score=excluded.relevance_score,
+          relevance_reasons_json=excluded.relevance_reasons_json, updated_at=excluded.updated_at`).run(
+        input.candidateKey, input.platform, input.strategy, input.seed, input.title ?? '', input.url ?? null, input.username ?? null,
+        input.relevanceScore ?? 0, JSON.stringify(input.relevanceReasons ?? []), status, time, time, time);
+      return this.get(input.candidateKey);
+    },
+    get(candidateKey: string) {
+      const row = db.prepare('SELECT * FROM discovery_candidates WHERE candidate_key=?').get(candidateKey) as Record<string, unknown> | undefined;
+      return row ? mapDiscoveryCandidate(row) : undefined;
+    },
+    listByStatus(status: DiscoveryCandidateStatus) {
+      return (db.prepare('SELECT * FROM discovery_candidates WHERE status=? ORDER BY relevance_score DESC').all(status) as Record<string, unknown>[]).map(mapDiscoveryCandidate);
+    },
+    updateStatus(candidateKey: string, status: DiscoveryCandidateStatus, extra?: { error?: string; sourceId?: number; username?: string; url?: string }) {
+      const current = this.get(candidateKey);
+      if (!current) return undefined;
+      const nextError = extra?.error ?? current.error;
+      const nextSourceId = extra?.sourceId ?? current.sourceId;
+      const nextUsername = extra?.username ?? current.username;
+      const nextUrl = extra?.url ?? current.url;
+      const joinedAt = status === 'JOINED' && !current.joinedAt ? now() : current.joinedAt;
+      db.prepare('UPDATE discovery_candidates SET status=?, error=?, source_id=?, username=?, url=?, joined_at=?, last_checked_at=?, updated_at=? WHERE candidate_key=?')
+        .run(status, nextError ?? null, nextSourceId ?? null, nextUsername ?? null, nextUrl ?? null, joinedAt, now(), now(), candidateKey);
+      return this.get(candidateKey);
+    },
+    recordJoin(candidateKey: string, sourceId: number) {
+      return this.updateStatus(candidateKey, 'JOINED', { sourceId });
+    },
+    counts() {
+      const rows = db.prepare('SELECT status, COUNT(*) count FROM discovery_candidates GROUP BY status').all() as Array<{ status: string; count: number }>;
+      const result: Record<string, number> = {};
+      for (const r of rows) result[r.status] = r.count;
+      return result;
+    },
   };
   const runs = {
     enqueue(sourceId: number, sessionId?: number | null) { const sourceRow=db.prepare('SELECT deleted_at FROM sources WHERE id=?').get(sourceId) as {deleted_at:string|null}|undefined; if(!sourceRow)throw new Error('source not found');if(sourceRow.deleted_at)throw new Error('source is deleted');try { const result = db.prepare("INSERT INTO runs(source_id,status,pages_checked,phones_found,unique_phones,cancellation_requested,needs_review,session_id,created_at) VALUES(?,'queued',0,0,0,0,0,?,?)").run(sourceId, sessionId ?? null, now()); return this.get(Number(result.lastInsertRowid))!; } catch (error) { if (String(error).includes('UNIQUE')) throw new Error('source already has an active run'); throw error; } },
@@ -1092,5 +1187,5 @@ export function createRepositories(db: CollectorDatabase) {
       };
     },
   };
-  return { sources, keywords, runs, contacts, evidence, reviews, audit, dashboard, binaListings, recipes, checkpoints, collectorSessions, leads };
+  return { sources, keywords, runs, contacts, evidence, reviews, audit, dashboard, binaListings, recipes, checkpoints, collectorSessions, leads, discovery };
 }

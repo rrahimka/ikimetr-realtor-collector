@@ -103,6 +103,9 @@ importers:
       '@ikimetr/core':
         specifier: workspace:*
         version: link:../core
+      '@ikimetr/database':
+        specifier: workspace:*
+        version: link:../database
       apify-client:
         specifier: ^2.22.1
         version: 2.24.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
