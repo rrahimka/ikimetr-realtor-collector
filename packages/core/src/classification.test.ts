@@ -144,4 +144,78 @@ describe('classifyEvidence', () => {
     expect(hotlineRes.confidence).toBe(0);
     expect(hotlineRes.autoAccept).toBe(false);
   });
+
+  describe('realtor auto-confirm (Subproject D)', () => {
+    it('auto-confirms a high-confidence realtor (>=90%) with an Azerbaijan mobile', () => {
+      const res = classifyEvidence({
+        text: 'Bakı Əmlak Agentliyi — mənzil satışı və kirayəsi. Vasitəçi xidməti.',
+        explicitSellerType: 'agent',
+        platform: 'telegram',
+        sourceType: 'telegram_channel',
+        normalizedPhone: '+994501234567',
+        rawPhone: '+994501234567',
+        occurrenceCount: 3,
+      });
+      expect(['agent', 'agency']).toContain(res.type);
+      expect(res.confidence).toBeGreaterThanOrEqual(0.9);
+      expect(res.autoAccept).toBe(true);
+      expect(res.autoAcceptPolicy).toBe('AUTO_ACCEPT_REALTOR_V1');
+    });
+
+    it('keeps a sub-90% realtor in manual review', () => {
+      const res = classifyEvidence({
+        text: 'əmlakçı',
+        platform: 'telegram',
+        sourceType: 'telegram_channel',
+        normalizedPhone: '+994501234567',
+        rawPhone: '+994501234567',
+      });
+      expect(res.type).toBe('agent');
+      expect(res.confidence).toBeLessThan(0.9);
+      expect(res.autoAccept).toBe(false);
+    });
+
+    it('never auto-accepts a realtor whose only phone is foreign (+90 Turkey)', () => {
+      const res = classifyEvidence({
+        text: 'Bakı Əmlak Agentliyi — mənzil satışı və kirayəsi. Vasitəçi xidməti.',
+        explicitSellerType: 'agency',
+        platform: 'telegram',
+        sourceType: 'telegram_channel',
+        normalizedPhone: '+905551234567',
+        rawPhone: '+90 555 123 45 67',
+        occurrenceCount: 3,
+      });
+      expect(res.confidence).toBeGreaterThanOrEqual(0.9);
+      expect(res.autoAccept).toBe(false);
+    });
+
+    it('never auto-accepts a realtor with a malformed non-+994 phone', () => {
+      const res = classifyEvidence({
+        text: 'Baku real estate agency, apartments for sale.',
+        explicitSellerType: 'agency',
+        platform: 'website',
+        sourceType: 'bina_agency',
+        normalizedPhone: '+994123',
+        rawPhone: '+994123',
+        occurrenceCount: 2,
+      });
+      expect(res.autoAccept).toBe(false);
+    });
+
+    it('still routes social new contacts to manual review despite >=90%', () => {
+      const res = classifyEvidence({
+        text: 'Baku Luxury Real Estate Agency. Realtor sales and rent.',
+        explicitSellerType: 'agency',
+        platform: 'instagram',
+        sourceType: 'instagram_profile',
+        profileDedicated: true,
+        occurrenceCount: 4,
+        normalizedPhone: '+994509998877',
+        rawPhone: '+994509998877',
+        alreadyVerifiedInDb: false,
+      });
+      expect(res.confidence).toBeGreaterThanOrEqual(0.9);
+      expect(res.autoAccept).toBe(false);
+    });
+  });
 });

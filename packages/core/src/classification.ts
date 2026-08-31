@@ -2,11 +2,14 @@ import type { Classification, ContactType, ExplicitSellerType, SignalBreakdown }
 import {
   AUTO_ACCEPT_WEBSITE_THRESHOLD,
   WHATSAPP_REALTOR_GROUP_AUTO_ACCEPT_THRESHOLD,
+  REALTOR_AUTO_ACCEPT_THRESHOLD,
   CONFIDENCE_POLICY_VERSION,
   AUTO_ACCEPT_WEBSITE_POLICY,
   AUTO_ACCEPT_WHATSAPP_POLICY,
+  AUTO_ACCEPT_REALTOR_POLICY,
 } from './thresholds';
 import { resolveOriginGroup } from './origin';
+import { analyzeAzerbaijanPhone } from './search-intelligence/phones';
 
 const professionalRegexes = [
   /əmlakçı|daşınmaz əmlak|makler|mənzil satışı|kirayə|vasitəçi/iu,
@@ -18,7 +21,6 @@ const locationDealRegex = /(?:baku|bakı|baki|yasamal|nəsimi|nasimi|xətai|khat
 const ownerRegex = /\bowner\b|владелец|собственник|sahib|mülkiyyətçi|mulkiyyetci|şəxsi|sexsi|sahibindən|öz evim|от хозяина|maklerlər narahat etməsin|vasitəçilər narahat etməsin/iu;
 const hotlineRegex = /\b(?:142|102|103|112|195|905|support|qaynar xətt|горячая линия)\b/iu;
 const platformHotlinePhones = new Set(['+994125990805']);
-const azMobileRegex = /^\+?994(?:50|51|55|70|77|99|10|60)\d{7}$/;
 
 export interface ClassifyInput {
   text: string;
@@ -46,7 +48,12 @@ export function classifyEvidence(input: ClassifyInput): Classification {
   const isExplicitAgent = input.explicitSellerType === 'agent';
   const isOwnerMention = !isExplicitAgency && !isExplicitAgent && ownerRegex.test(text);
   const isHotline = hotlineRegex.test(text) || Boolean(input.rawPhone && hotlineRegex.test(input.rawPhone)) || Boolean(input.normalizedPhone && platformHotlinePhones.has(input.normalizedPhone));
-  const isAzMobile = input.normalizedPhone ? azMobileRegex.test(input.normalizedPhone) : !input.isForeign;
+  // Azerbaijan-only phone policy: a present number that is not a valid `+994`
+  // national number (foreign or malformed) is forced foreign and can never be
+  // auto-accepted. With no phone at all we fall back to the caller's isForeign flag.
+  const azPhone = input.normalizedPhone ? analyzeAzerbaijanPhone(input.normalizedPhone) : undefined;
+  const isForeign = Boolean(input.isForeign) || (azPhone !== undefined && !azPhone.isValid);
+  const isAzMobile = azPhone !== undefined ? azPhone.isMobile : !isForeign;
 
   // 1. Explicit site indicators
   if (isExplicitAgency) {
@@ -100,7 +107,7 @@ export function classifyEvidence(input: ClassifyInput): Classification {
   }
 
   // 8. Local mobile phone
-  if (isAzMobile && !input.isForeign) {
+  if (isAzMobile && !isForeign) {
     signals.push({ key: 'azerbaijan_mobile', points: 10, label: 'Азербайджанский мобильный номер (+10)' });
     reasons.push('azerbaijan_mobile');
   }
@@ -143,6 +150,15 @@ export function classifyEvidence(input: ClassifyInput): Classification {
 
   const confidence = Number(rawScore.toFixed(2));
 
+  // Genuine social platforms (Instagram/TikTok/Facebook) are noisy scraped
+  // surfaces: new contacts there stay in manual review (SOCIAL_NEW_CONTACT_AUTO_ACCEPT).
+  // Telegram curated channels and verified social contacts are not subject to that
+  // hold — they are eligible for realtor auto-confirm below.
+  const isGenuineSocialNew =
+    origin === 'social' &&
+    !input.alreadyVerifiedInDb &&
+    /instagram|tiktok|facebook/i.test(`${input.platform ?? ''} ${input.sourceType ?? ''}`);
+
   // Determine auto-accept
   let autoAccepted = false;
   let autoAcceptPolicy: string | undefined = undefined;
@@ -157,6 +173,15 @@ export function classifyEvidence(input: ClassifyInput): Classification {
     } else if (origin === 'social' && input.alreadyVerifiedInDb) {
       autoAccepted = true;
       autoAcceptPolicy = 'AUTO_MERGE_VERIFIED_EXISTING';
+    } else if (
+      (type === 'agent' || type === 'agency') &&
+      confidence >= REALTOR_AUTO_ACCEPT_THRESHOLD &&
+      !isGenuineSocialNew
+    ) {
+      // High-confidence realtor classification with a valid Azerbaijan mobile:
+      // auto-confirm (covers website / Telegram / WhatsApp / verified social).
+      autoAccepted = true;
+      autoAcceptPolicy = AUTO_ACCEPT_REALTOR_POLICY;
     }
   }
 
