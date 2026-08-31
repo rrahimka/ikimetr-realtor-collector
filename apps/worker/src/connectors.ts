@@ -17,6 +17,10 @@ import {
   crawlWebsite,
   crawlYeniEmlakAz,
   runBinaAgencyConnector,
+  restoreTelegramClient,
+  resolveTelegramSourceEntity,
+  fetchTelegramAuthorizedMessages,
+  scanResultToConnectorResult,
   type BinaConnectorResult,
   type BinaOutcome,
   type BinaStopRequest,
@@ -35,6 +39,7 @@ export interface ConnectorContext {
     url: string,
     details: { outcome: BinaOutcome; sellerType?: ExplicitBinaSellerType; phone?: string; fingerprint?: string },
   ) => void | Promise<void>;
+  checkpoint?: { lastCheckpointId: string } | undefined;
 }
 
 export interface ConnectorDependencies {
@@ -60,6 +65,95 @@ export interface ConnectorDependencies {
 function permissionDisabledResult(): BinaConnectorResult {
   const outcomes = Object.fromEntries(BINA_OUTCOMES.map((outcome) => [outcome, outcome === 'blocked' ? 1 : 0])) as BinaConnectorResult['outcomes'];
   return { items: [], pagesChecked: 0, estimatedItems: 0, outcomes, stopReason: 'permission_disabled' };
+}
+
+/** Upper bound on messages requested per run — keeps Telegram load bounded. */
+const TELEGRAM_MAX_MESSAGES_PER_RUN = 100;
+
+/** Capped retries for transient Telegram failures; FloodWait is not retried. */
+const TELEGRAM_MAX_ATTEMPTS = 2;
+
+function isFloodWaitError(error: unknown): { seconds: number } | undefined {
+  if (!(error instanceof Error)) return undefined;
+  if (error.constructor?.name !== 'FloodWaitError' && error.name !== 'FloodWaitError') return undefined;
+  const seconds = Number((error as { seconds?: unknown }).seconds);
+  return Number.isFinite(seconds) && seconds > 0 ? { seconds } : undefined;
+}
+
+/**
+ * Authorized MTProto connector for Telegram channels/supergroups.
+ *
+ * Restores the encrypted persisted session, resolves ONLY the configured source
+ * with a single targeted entity lookup (no dialog enumeration), fetches messages
+ * newer than the persisted checkpoint, and processes them through the existing
+ * lead/evidence extraction pipeline.
+ *
+ * Never prints apiHash, sessionString, OTP, or 2FA passwords, and never
+ * initiates interactive authentication — the worker only consumes an
+ * already-authenticated session.
+ */
+async function crawlTelegramAuthorizedMTProto(
+  locator: string,
+  sourceId: number,
+  env: NodeJS.ProcessEnv,
+  limit = 50,
+  checkpoint?: { lastCheckpointId: string },
+): Promise<ConnectorResult> {
+  const restoreResult = await restoreTelegramClient(env);
+  if (!restoreResult) {
+    throw new Error('telegram_credentials_not_configured');
+  }
+
+  if (!restoreResult.authenticated) {
+    await restoreResult.client.disconnect();
+    throw new Error('telegram_not_authenticated');
+  }
+
+  const parsedCheckpoint = checkpoint?.lastCheckpointId ? Number(checkpoint.lastCheckpointId) : NaN;
+  const minId = Number.isSafeInteger(parsedCheckpoint) && parsedCheckpoint > 0 ? parsedCheckpoint : undefined;
+  const boundedLimit = Math.min(Math.max(limit, 1), TELEGRAM_MAX_MESSAGES_PER_RUN);
+
+  try {
+    // One exact lookup for the configured source — unrelated chats in the
+    // account are never enumerated, resolved or read.
+    const sourceEntity = await resolveTelegramSourceEntity(restoreResult.client, locator);
+    if (!sourceEntity) {
+      throw new Error('telegram_dialog_not_found');
+    }
+
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= TELEGRAM_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const { scanResult, highestMessageId } = await fetchTelegramAuthorizedMessages(restoreResult.client, {
+          chatId: sourceEntity.id,
+          limit: boundedLimit,
+          ...(sourceId != null ? { sourceId } : {}),
+          ...(minId != null ? { minId } : {}),
+        });
+
+        const result = scanResultToConnectorResult(scanResult);
+        if (highestMessageId > 0 && highestMessageId !== minId) {
+          result.checkpointId = String(highestMessageId);
+        }
+        return result;
+      } catch (error) {
+        lastError = error;
+        const floodWait = isFloodWaitError(error);
+        if (!floodWait) break; // Never retry a FloodWait immediately.
+        if (attempt === TELEGRAM_MAX_ATTEMPTS) break;
+        // Honour Telegram's requested wait, capped so a worker tick cannot hang.
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, Math.min(floodWait.seconds, 30) * 1_000);
+        });
+      }
+    }
+
+    const floodWait = isFloodWaitError(lastError);
+    if (floodWait) throw new Error(`telegram_flood_wait_${floodWait.seconds}s`);
+    throw lastError instanceof Error ? lastError : new Error('telegram_fetch_failed');
+  } finally {
+    await restoreResult.client.disconnect();
+  }
 }
 
 export function createConnectorRunner(
@@ -99,6 +193,10 @@ export function createConnectorRunner(
           },
         ],
       };
+    }
+
+    if (source.type === 'telegram_channel' || source.type === 'telegram_group') {
+      return crawlTelegramAuthorizedMTProto(source.locator, source.id, env, source.maxPages > 0 ? source.maxPages : 50, context.checkpoint);
     }
 
     if (source.type === 'bina_agency') {
@@ -457,16 +555,7 @@ export function createConnectorRunner(
         });
       }
       if (detected === 'telegram_channel' || detected === 'telegram_group' || (source.type as string) === 'telegram_channel' || (source.type as string) === 'telegram_group') {
-        const crawlTg = dependencies.crawlTelegram ?? crawlTelegram;
-        const startUrl = source.locator.startsWith('http') ? source.locator : (source.locator.startsWith('@') ? `https://t.me/${source.locator.slice(1)}` : `https://${source.locator}`);
-        return crawlTg({
-          startUrl,
-          maxPages: source.maxPages > 0 ? source.maxPages : 10,
-          maxDepth: source.maxDepth,
-          delayMs: source.delayMs,
-          shouldStop: context.shouldStop,
-          ...(context.shouldProcessUrl ? { shouldProcessUrl: context.shouldProcessUrl } : {}),
-        });
+        return crawlTelegramAuthorizedMTProto(source.locator, source.id, env, source.maxPages > 0 ? source.maxPages : 50, context.checkpoint);
       }
       if (detected === 'facebook_page' || (source.type as string) === 'facebook_page') {
         const crawlFb = dependencies.crawlFacebook ?? crawlFacebook;

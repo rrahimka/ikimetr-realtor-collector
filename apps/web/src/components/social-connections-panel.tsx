@@ -54,6 +54,12 @@ export function SocialConnectionsPanel({
 
   // Human Auth Modal State
   const [authModalAccount, setAuthModalAccount] = useState<SocialAccountConnection | null>(null);
+  const [telegramAuthStep, setTelegramAuthStep] = useState<'phone' | 'code' | '2fa'>('phone');
+  const [telegramPhoneNumber, setTelegramPhoneNumber] = useState('');
+  const [telegramCode, setTelegramCode] = useState('');
+  const [telegram2faPassword, setTelegram2faPassword] = useState('');
+  const [telegramAuthError, setTelegramAuthError] = useState('');
+  const [telegramAuthBusy, setTelegramAuthBusy] = useState(false);
 
   const platforms: { id: SocialPlatform; name: string }[] = [
     { id: 'instagram', name: 'Instagram' },
@@ -147,6 +153,11 @@ export function SocialConnectionsPanel({
   const handleConfirmHumanAuth = async () => {
     if (!authModalAccount) return;
     const platform = authModalAccount.platform;
+
+    if (platform === 'telegram') {
+      return handleTelegramAuth();
+    }
+
     setBusy(platform);
     try {
       const res = await fetch('/api/connections', {
@@ -166,6 +177,118 @@ export function SocialConnectionsPanel({
     } finally {
       setBusy(null);
     }
+  };
+
+  const handleTelegramAuth = async () => {
+    if (!authModalAccount) return;
+    setTelegramAuthBusy(true);
+    setTelegramAuthError('');
+
+    try {
+      if (telegramAuthStep === 'phone') {
+        if (!telegramPhoneNumber.trim()) {
+          setTelegramAuthError('Enter your phone number');
+          return;
+        }
+        const res = await fetch('/api/connections/telegram/auth', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'send_code', phoneNumber: telegramPhoneNumber }),
+        });
+        const data = await res.json() as { ok?: boolean; error?: string; state?: { status?: string } };
+        if (data.ok && data.state?.status === 'waiting_code') {
+          setTelegramAuthStep('code');
+        } else {
+          setTelegramAuthError(data.error || 'Failed to send code');
+        }
+      } else if (telegramAuthStep === 'code') {
+        if (!telegramCode.trim()) {
+          setTelegramAuthError('Enter the verification code');
+          return;
+        }
+        const res = await fetch('/api/connections/telegram/auth', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'sign_in', code: telegramCode }),
+        });
+        const data = await res.json() as { ok?: boolean; error?: string; state?: { status?: string; accountInfo?: { username?: string; id?: number } } };
+        if (data.ok && data.state?.status === 'connected') {
+          const handle = data.state.accountInfo?.username
+            ? `@${data.state.accountInfo.username}`
+            : String(data.state.accountInfo?.id ?? '');
+          setAccounts((prev) => ({
+            ...prev,
+            telegram: {
+              ...prev.telegram,
+              status: 'connected',
+              accountHandle: handle,
+              connectedAt: new Date().toISOString(),
+            },
+          }));
+          setAuthModalAccount(null);
+          resetTelegramAuthState();
+          showToast(t(lang, 'toast.actionSuccess'), 'success');
+        } else if (data.ok && data.state?.status === 'waiting_2fa') {
+          setTelegramAuthStep('2fa');
+        } else {
+          setTelegramAuthError(data.error || 'Invalid code');
+        }
+      } else if (telegramAuthStep === '2fa') {
+        if (!telegram2faPassword.trim()) {
+          setTelegramAuthError('Enter your 2FA password');
+          return;
+        }
+        const res = await fetch('/api/connections/telegram/auth', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'sign_in_2fa', password: telegram2faPassword }),
+        });
+        const data = await res.json() as { ok?: boolean; error?: string; state?: { status?: string; accountInfo?: { username?: string; id?: number } } };
+        if (data.ok && data.state?.status === 'connected') {
+          const handle = data.state.accountInfo?.username
+            ? `@${data.state.accountInfo.username}`
+            : String(data.state.accountInfo?.id ?? '');
+          setAccounts((prev) => ({
+            ...prev,
+            telegram: {
+              ...prev.telegram,
+              status: 'connected',
+              accountHandle: handle,
+              connectedAt: new Date().toISOString(),
+            },
+          }));
+          setAuthModalAccount(null);
+          resetTelegramAuthState();
+          showToast(t(lang, 'toast.actionSuccess'), 'success');
+        } else {
+          setTelegramAuthError(data.error || 'Invalid 2FA password');
+        }
+      }
+    } catch {
+      setTelegramAuthError('Network error');
+    } finally {
+      setTelegramAuthBusy(false);
+    }
+  };
+
+  const resetTelegramAuthState = () => {
+    setTelegramAuthStep('phone');
+    setTelegramPhoneNumber('');
+    setTelegramCode('');
+    setTelegram2faPassword('');
+    setTelegramAuthError('');
+  };
+
+  const handleCancelTelegramAuth = async () => {
+    try {
+      await fetch('/api/connections/telegram/auth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' }),
+      });
+    } catch { /* ignore */ }
+    resetTelegramAuthState();
+    setAuthModalAccount(null);
   };
 
   const openConfigModal = (platform: SocialPlatform) => {
@@ -348,12 +471,74 @@ export function SocialConnectionsPanel({
       {authModalAccount && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-content">
-            <h2 style={{ margin: 0 }}>{t(lang, 'connections.humanAuthRequired')}</h2>
-            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '13px' }}>
-              {authModalAccount.humanAuthPrompt ?? t(lang, 'connections.humanAuthInstruction')}
-            </p>
+            <h2 style={{ margin: 0 }}>
+              {authModalAccount.platform === 'telegram'
+                ? 'Telegram Authorization'
+                : t(lang, 'connections.humanAuthRequired')}
+            </h2>
 
-            {authModalAccount.qrCodeData && (
+            {authModalAccount.platform === 'telegram' ? (
+              <div style={{ marginTop: '12px' }}>
+                {telegramAuthStep === 'phone' && (
+                  <div>
+                    <p style={{ margin: '0 0 8px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                      Enter your Telegram phone number (with country code).
+                    </p>
+                    <input
+                      type="tel"
+                      value={telegramPhoneNumber}
+                      onChange={(e) => { setTelegramPhoneNumber(e.target.value); setTelegramAuthError(''); }}
+                      placeholder="+994 XX XXX XX XX"
+                      style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+                      disabled={telegramAuthBusy}
+                    />
+                  </div>
+                )}
+                {telegramAuthStep === 'code' && (
+                  <div>
+                    <p style={{ margin: '0 0 8px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                      Enter the verification code sent to your phone.
+                    </p>
+                    <input
+                      type="text"
+                      value={telegramCode}
+                      onChange={(e) => { setTelegramCode(e.target.value); setTelegramAuthError(''); }}
+                      placeholder="12345"
+                      style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+                      disabled={telegramAuthBusy}
+                      autoFocus
+                    />
+                  </div>
+                )}
+                {telegramAuthStep === '2fa' && (
+                  <div>
+                    <p style={{ margin: '0 0 8px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                      Enter your Telegram 2FA password.
+                    </p>
+                    <input
+                      type="password"
+                      value={telegram2faPassword}
+                      onChange={(e) => { setTelegram2faPassword(e.target.value); setTelegramAuthError(''); }}
+                      placeholder="2FA password"
+                      style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+                      disabled={telegramAuthBusy}
+                      autoFocus
+                    />
+                  </div>
+                )}
+                {telegramAuthError && (
+                  <p style={{ margin: '0 0 8px', color: 'var(--danger, #ef4444)', fontSize: '12px' }}>
+                    {telegramAuthError}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '13px' }}>
+                {authModalAccount.humanAuthPrompt ?? t(lang, 'connections.humanAuthInstruction')}
+              </p>
+            )}
+
+            {authModalAccount.platform !== 'telegram' && authModalAccount.qrCodeData && (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
                 <img
                   src={authModalAccount.qrCodeData}
@@ -367,17 +552,39 @@ export function SocialConnectionsPanel({
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setAuthModalAccount(null)}
+                onClick={() => {
+                  if (authModalAccount.platform === 'telegram') {
+                    void handleCancelTelegramAuth();
+                  } else {
+                    setAuthModalAccount(null);
+                  }
+                }}
               >
                 {t(lang, 'whatsapp.cancel')}
               </button>
-              <button
-                type="button"
-                onClick={() => { void handleConfirmHumanAuth(); }}
-                disabled={busy !== null}
-              >
-                {t(lang, 'connections.confirmAuth')}
-              </button>
+              {authModalAccount.platform === 'telegram' ? (
+                <button
+                  type="button"
+                  onClick={() => { void handleConfirmHumanAuth(); }}
+                  disabled={telegramAuthBusy}
+                >
+                  {telegramAuthBusy
+                    ? t(lang, 'button.running')
+                    : telegramAuthStep === 'phone'
+                      ? 'Send Code'
+                      : telegramAuthStep === 'code'
+                        ? 'Verify Code'
+                        : 'Verify 2FA'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { void handleConfirmHumanAuth(); }}
+                  disabled={busy !== null}
+                >
+                  {t(lang, 'connections.confirmAuth')}
+                </button>
+              )}
             </div>
           </div>
         </div>

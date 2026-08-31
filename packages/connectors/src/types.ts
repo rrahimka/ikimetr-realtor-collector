@@ -1,3 +1,5 @@
+import type { LeadInput } from '@ikimetr/core';
+
 export type BinaStopRequest = 'cancelled' | 'kill_switch' | false;
 
 export interface ConnectorEvidence {
@@ -19,6 +21,17 @@ export interface ConnectorResult {
   items: ConnectorEvidence[];
   pagesChecked: number;
   estimatedItems: number;
+  /**
+   * Client leads (buyer/seller/realtor_request) discovered by a social or
+   * authorized connector. Optional so website connectors are unaffected.
+   */
+  leads?: LeadInput[] | undefined;
+  /**
+   * Connector-reported checkpoint id (for Telegram: highest processed message
+   * id). The worker only advances the persisted checkpoint when persistence of
+   * the run has succeeded.
+   */
+  checkpointId?: string | undefined;
 }
 
 export interface CrawlOptions {

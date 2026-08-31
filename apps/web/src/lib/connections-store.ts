@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import {
   type SocialAccountConnection,
   type SocialPlatform,
@@ -12,6 +12,7 @@ import {
   buildOAuthAuthorizeUrl,
   generatePkcePair,
 } from '@ikimetr/core';
+import { resolveConnectionsStorePath } from '@ikimetr/connectors/paths';
 import { decryptSecret, encryptSecret } from './secret-storage';
 
 export interface ConnectionsState {
@@ -96,7 +97,12 @@ const DEFAULT_STATE: ConnectionsState = {
   ],
 };
 
-const STORE_PATH = resolve(process.cwd(), 'data/connections.json');
+// Anchored to the monorepo data directory, not to process.cwd(), so the web
+// process (cwd=apps/web) and the worker process (cwd=<repo root>) read and
+// write the very same file.
+function storePath(): string {
+  return resolveConnectionsStorePath();
+}
 
 /** Fills each account with its honest provider integration classification. */
 function withIntegrationStatus(account: SocialAccountConnection): SocialAccountConnection {
@@ -106,8 +112,8 @@ function withIntegrationStatus(account: SocialAccountConnection): SocialAccountC
 
 export function getConnectionsStore(): ConnectionsState {
   try {
-    if (existsSync(STORE_PATH)) {
-      const raw = readFileSync(STORE_PATH, 'utf8');
+    if (existsSync(storePath())) {
+      const raw = readFileSync(storePath(), 'utf8');
       const parsed = JSON.parse(raw) as ConnectionsState;
       const accounts: Record<SocialPlatform, SocialAccountConnection> = {
         instagram: { ...DEFAULT_STATE.accounts.instagram },
@@ -198,8 +204,8 @@ export function saveConnectionsStore(state: ConnectionsState): void {
         sessionString: encryptSecret(telegramAccount.sessionString),
       };
     }
-    mkdirSync(dirname(STORE_PATH), { recursive: true });
-    writeFileSync(STORE_PATH, JSON.stringify(toSave, null, 2), 'utf8');
+    mkdirSync(dirname(storePath()), { recursive: true });
+    writeFileSync(storePath(), JSON.stringify(toSave, null, 2), 'utf8');
   } catch {
     // ignore
   }

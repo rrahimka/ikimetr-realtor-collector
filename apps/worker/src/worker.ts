@@ -88,10 +88,13 @@ export async function processRun(
   };
 
   const recheckSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000).toISOString();
+  const isTelegramSource = source.type === 'telegram_channel' || source.type === 'telegram_group';
+  const checkpoint = isTelegramSource ? repos.checkpoints.get(source.id) : undefined;
   const result = await connector(source, {
     shouldStop: () => stopRequest(repos, run.id, source.id),
     shouldProcessUrl: (url) => !repos.evidence.wasUrlSeenSince(source.id, url, recheckSince) && !repos.binaListings?.wasUrlCheckedRecently(source.id, url, recheckSince),
     onListingChecked,
+    checkpoint: checkpoint ? { lastCheckpointId: checkpoint.lastCheckpointId } : undefined,
   });
   const binaResult = isBinaResult(source, result) ? result : undefined;
   const terminalStop = binaResult?.stopReason;
@@ -111,6 +114,19 @@ export async function processRun(
   let duplicates = 0;
   const unique = new Set<string>();
   const agencies = new Set<string>();
+
+  // Persist client leads (buyer / seller / realtor_request) produced by
+  // authorized social connectors. repos.leads.create dedupes by phone or by
+  // platform+username+leadType, so repeated runs do not duplicate leads.
+  for (const lead of result.leads ?? []) {
+    if (stopRequest(repos, run.id, source.id)) break;
+    try {
+      repos.leads.create(lead);
+    } catch {
+      // A single malformed lead must not abort the whole run.
+    }
+  }
+
   for (const item of result.items) {
     const requestedStop = stopRequest(repos, run.id, source.id);
     if (requestedStop) {
@@ -188,6 +204,17 @@ export async function processRun(
     repos.runs.finishBina(run.id, terminalStop ? 'blocked' : 'completed', counters, terminalStop, { outcomes: binaResult.outcomes, newContacts, duplicates, agenciesFound: agencies.size });
   } else {
     repos.runs.finish(run.id, 'completed', counters, undefined, { newContacts, duplicates });
+  }
+
+  // Advance the Telegram checkpoint only after the run has been persisted
+  // successfully, and only from the connector-reported highest message id
+  // (not parsed out of evidence URLs, which is empty when nothing matched).
+  if (isTelegramSource && result.checkpointId) {
+    const previous = checkpoint?.lastCheckpointId ? Number(checkpoint.lastCheckpointId) : 0;
+    const next = Number(result.checkpointId);
+    if (Number.isSafeInteger(next) && next > 0 && next > previous) {
+      repos.checkpoints.save(source.id, 'telegram_mtproto', String(next), result.items.length);
+    }
   }
 }
 

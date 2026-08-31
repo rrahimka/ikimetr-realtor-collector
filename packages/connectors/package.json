@@ -19,7 +19,12 @@
     "./types": "./src/types.ts",
     "./unvan": "./src/unvan.ts",
     "./vipemlak": "./src/vipemlak.ts",
-    "./yeniemlak": "./src/yeniemlak.ts"
+    "./yeniemlak": "./src/yeniemlak.ts",
+    "./telegram-session-restore": "./src/telegram-session-restore.ts",
+    "./telegram-mtproto-connector": "./src/telegram-mtproto-connector.ts",
+    "./telegram-entity-guard": "./src/telegram-entity-guard.ts",
+    "./paths": "./src/paths.ts",
+    "./secret-storage": "./src/secret-storage.ts"
   },
   "scripts": {
     "test": "vitest run --root ../.. packages/connectors/src",
