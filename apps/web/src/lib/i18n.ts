@@ -404,6 +404,8 @@ const dict: Record<string, Entry> = {
   'connections.statusError': { ru: 'Ошибка авторизации', az: 'Avtorizasiya xətası', en: 'Authorization Error' },
   'connections.statusReauthRequired': { ru: 'Требуется повторный вход', az: 'Yenidən giriş tələb olunur', en: 'Re-authentication required' },
   'connections.connect': { ru: 'Подключить аккаунт', az: 'Hesabı qoş', en: 'Connect account' },
+  'connections.connectFailed': { ru: 'Не удалось подключить аккаунт', az: 'Hesabı qoşmaq mümkün olmadı', en: 'Failed to connect account' },
+  'connections.actionFailed': { ru: 'Не удалось выполнить действие', az: 'Əməliyyatı icra etmək mümkün olmadı', en: 'Action failed' },
   'connections.disconnect': { ru: 'Отключить', az: 'Ayır', en: 'Disconnect' },
   'connections.switchAccount': { ru: 'Сменить аккаунт', az: 'Hesabı dəyiş', en: 'Switch account' },
   'connections.configureSearch': { ru: 'Настроить поиск', az: 'Axtarışı tənzimlə', en: 'Configure search' },

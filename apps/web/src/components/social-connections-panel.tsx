@@ -12,6 +12,7 @@ import {
 } from '../lib/source-options';
 import { getProviderProfile, listUnsupportedCapabilities } from '@ikimetr/core/capabilities';
 import { t, type Lang } from '../lib/i18n';
+import { jsonMutationHeaders } from '../lib/csrf-client';
 import { showToast } from './toast';
 
 interface SocialConnectionsPanelProps {
@@ -74,7 +75,7 @@ export function SocialConnectionsPanel({
     try {
       const res = await fetch('/api/connections', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: jsonMutationHeaders(),
         body: JSON.stringify({ platform, action: 'connect' }),
       });
       const data = (await res.json()) as ConnectionApiResponse;
@@ -93,10 +94,10 @@ export function SocialConnectionsPanel({
           showToast(t(lang, 'toast.actionSuccess'), 'success');
         }
       } else {
-        showToast(t(lang, 'toast.stopFailed'), 'error');
+        showToast(t(lang, 'connections.connectFailed'), 'error');
       }
     } catch {
-      showToast(t(lang, 'toast.stopFailed'), 'error');
+      showToast(t(lang, 'connections.connectFailed'), 'error');
     } finally {
       setBusy(null);
     }
@@ -107,7 +108,7 @@ export function SocialConnectionsPanel({
     try {
       const res = await fetch('/api/connections', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: jsonMutationHeaders(),
         body: JSON.stringify({ platform, action: 'disconnect' }),
       });
       const data = (await res.json()) as ConnectionApiResponse;
@@ -117,7 +118,7 @@ export function SocialConnectionsPanel({
         showToast(t(lang, 'toast.actionSuccess'), 'info');
       }
     } catch {
-      showToast(t(lang, 'toast.stopFailed'), 'error');
+      showToast(t(lang, 'connections.actionFailed'), 'error');
     } finally {
       setBusy(null);
     }
@@ -128,7 +129,7 @@ export function SocialConnectionsPanel({
     try {
       const res = await fetch('/api/connections', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: jsonMutationHeaders(),
         body: JSON.stringify({ platform, action: 'switch_account' }),
       });
       const data = (await res.json()) as ConnectionApiResponse;
@@ -141,10 +142,10 @@ export function SocialConnectionsPanel({
           showToast(t(lang, 'toast.actionSuccess'), 'success');
         }
       } else {
-        showToast(t(lang, 'toast.stopFailed'), 'error');
+        showToast(t(lang, 'connections.actionFailed'), 'error');
       }
     } catch {
-      showToast(t(lang, 'toast.stopFailed'), 'error');
+      showToast(t(lang, 'connections.actionFailed'), 'error');
     } finally {
       setBusy(null);
     }
@@ -162,7 +163,7 @@ export function SocialConnectionsPanel({
     try {
       const res = await fetch('/api/connections', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: jsonMutationHeaders(),
         body: JSON.stringify({ platform, action: 'confirm_auth' }),
       });
       const data = (await res.json()) as ConnectionApiResponse;
@@ -173,7 +174,7 @@ export function SocialConnectionsPanel({
         showToast(t(lang, 'toast.actionSuccess'), 'success');
       }
     } catch {
-      showToast(t(lang, 'toast.stopFailed'), 'error');
+      showToast(t(lang, 'connections.actionFailed'), 'error');
     } finally {
       setBusy(null);
     }
@@ -192,7 +193,7 @@ export function SocialConnectionsPanel({
         }
         const res = await fetch('/api/connections/telegram/auth', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: jsonMutationHeaders(),
           body: JSON.stringify({ action: 'send_code', phoneNumber: telegramPhoneNumber }),
         });
         const data = await res.json() as { ok?: boolean; error?: string; state?: { status?: string } };
@@ -208,7 +209,7 @@ export function SocialConnectionsPanel({
         }
         const res = await fetch('/api/connections/telegram/auth', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: jsonMutationHeaders(),
           body: JSON.stringify({ action: 'sign_in', code: telegramCode }),
         });
         const data = await res.json() as { ok?: boolean; error?: string; state?: { status?: string; accountInfo?: { username?: string; id?: number } } };
@@ -240,7 +241,7 @@ export function SocialConnectionsPanel({
         }
         const res = await fetch('/api/connections/telegram/auth', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: jsonMutationHeaders(),
           body: JSON.stringify({ action: 'sign_in_2fa', password: telegram2faPassword }),
         });
         const data = await res.json() as { ok?: boolean; error?: string; state?: { status?: string; accountInfo?: { username?: string; id?: number } } };
@@ -283,7 +284,7 @@ export function SocialConnectionsPanel({
     try {
       await fetch('/api/connections/telegram/auth', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: jsonMutationHeaders(),
         body: JSON.stringify({ action: 'cancel' }),
       });
     } catch { /* ignore */ }
@@ -304,7 +305,7 @@ export function SocialConnectionsPanel({
     try {
       const res = await fetch(`/api/connections/${configModalPlatform}/search-config`, {
         method: 'PUT',
-        headers: { 'content-type': 'application/json' },
+        headers: jsonMutationHeaders(),
         body: JSON.stringify({
           enabledSurfaces: selectedSurfaces,
           purpose: selectedPurpose,
@@ -319,7 +320,7 @@ export function SocialConnectionsPanel({
         showToast(t(lang, 'toast.sourceSaved'), 'success');
       }
     } catch {
-      showToast(t(lang, 'toast.stopFailed'), 'error');
+      showToast(t(lang, 'connections.actionFailed'), 'error');
     } finally {
       setBusy(null);
     }
