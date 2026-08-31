@@ -50,15 +50,15 @@ export class PersistentDiscoveryLedger {
     relevanceReasons?: string[];
     status?: DiscoveryCandidateStatus;
   }): Promise<DiscoveryCandidateRecord | undefined> {
-    return this.repo.upsertCandidate(candidate);
+    return await Promise.resolve(this.repo.upsertCandidate(candidate));
   }
 
   async get(candidateKey: string): Promise<DiscoveryCandidateRecord | undefined> {
-    return this.repo.get(candidateKey);
+    return await Promise.resolve(this.repo.get(candidateKey));
   }
 
   async listByStatus(status: DiscoveryCandidateStatus): Promise<DiscoveryCandidateRecord[]> {
-    return this.repo.listByStatus(status);
+    return await Promise.resolve(this.repo.listByStatus(status));
   }
 
   async setStatus(
@@ -66,14 +66,14 @@ export class PersistentDiscoveryLedger {
     status: DiscoveryCandidateStatus,
     extra?: { error?: string; sourceId?: number; username?: string; url?: string },
   ): Promise<DiscoveryCandidateRecord | undefined> {
-    return this.repo.updateStatus(candidateKey, status, extra);
+    return await Promise.resolve(this.repo.updateStatus(candidateKey, status, extra));
   }
 
   async markJoined(candidateKey: string, sourceId: number): Promise<DiscoveryCandidateRecord | undefined> {
-    return this.repo.recordJoin(candidateKey, sourceId);
+    return await Promise.resolve(this.repo.recordJoin(candidateKey, sourceId));
   }
 
   async counts(): Promise<Record<string, number>> {
-    return this.repo.counts();
+    return await Promise.resolve(this.repo.counts());
   }
 }

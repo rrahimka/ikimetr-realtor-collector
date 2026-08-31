@@ -35,7 +35,6 @@ describe('planDiscoveryCandidates (Subproject A — pure planner)', () => {
   });
 
   it('honors a custom auto-join threshold', () => {
-    const planned = planDiscoveryCandidates([{ platform: 'telegram', strategy: 'keyword', seed: 'Baku flats' }], { autoJoinThreshold: 0.25 });
     // A borderline seed clears the lowered threshold but would not clear the default.
     const loose = planDiscoveryCandidates([{ platform: 'telegram', strategy: 'keyword', seed: 'Baku flats' }], { autoJoinThreshold: 0.25 })[0]!;
     const strict = planDiscoveryCandidates([{ platform: 'telegram', strategy: 'keyword', seed: 'Baku flats' }])[0]!;
